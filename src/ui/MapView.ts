@@ -17,6 +17,7 @@ const DOOR_CSS: Record<string, string> = {
   blue: "#3a7bff",
   red: "#ff3a3a",
   yellow: "#ffd23a",
+  exit: "#33dd66",
 };
 
 /** Top-down automap overlay (toggled with M). World XZ → canvas. */

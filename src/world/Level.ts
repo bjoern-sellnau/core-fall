@@ -65,6 +65,7 @@ export class Level {
     { pos: [0, -6, -210], size: [11, 11, 1.6], color: "yellow" },
     { pos: [0, -22, -336], size: [12, 12, 1.6], color: "red" },
     { pos: [0, -8, -450], size: [12, 14, 1.6], color: "normal" },
+    { pos: [0, -6, -494], size: [22, 18, 1.8], color: "exit" },
   ];
 
   private reactor: THREE.Mesh;
@@ -110,6 +111,11 @@ export class Level {
       box(0, 18, -118, 14, 22, 14, 9), // 21 vertical alcove (off 4)
       box(-26, -10, -244, 24, 16, 20, 12), // 22 -X branch room (off 10)
       box(28, -22, -310, 22, 16, 20, 0), // 23 DARK side room (off 12)
+      box(0, -6, -508, 22, 18, 40, 12), // 24 exit chamber (behind sealed door)
+      box(-28, -22, -310, 22, 16, 9, 7), // 25 -X branch corridor (off 12)
+      box(-48, -22, -310, 24, 16, 22, 12), // 26 -X branch room
+      box(0, 16, -370, 14, 24, 14, 9), // 27 vertical shaft (off 14)
+      box(20, -10, -430, 26, 16, 22, 13), // 28 +X branch room (off 18)
     ];
 
     const merged: number[] = [];
@@ -247,7 +253,7 @@ export class Level {
         (boxes[i].min[2] + boxes[i].max[2]) / 2,
       );
     for (const i of [2, 6, 10, 14, 17]) this.factorySpawns.push(center(i));
-    for (const i of [1, 3, 5, 11, 13, 15, 18, 21, 22, 23]) {
+    for (const i of [1, 3, 5, 11, 13, 15, 18, 21, 22, 23, 26, 27, 28]) {
       this.pickupSpawns.push(center(i).add(new THREE.Vector3(0, 2, 0)));
     }
     // Access keys, each on the main path before its locked door.

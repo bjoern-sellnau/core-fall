@@ -2,7 +2,7 @@ import * as THREE from "three";
 import { RAPIER } from "../physics/Physics";
 import type { Sfx } from "../audio/Sfx";
 
-export type DoorColor = "normal" | "blue" | "red" | "yellow";
+export type DoorColor = "normal" | "blue" | "red" | "yellow" | "exit";
 
 export interface DoorDef {
   pos: [number, number, number];
@@ -23,6 +23,7 @@ const COLOR: Record<DoorColor, number> = {
   blue: 0x3a7bff,
   red: 0xff3a3a,
   yellow: 0xffd23a,
+  exit: 0x33dd66,
 };
 
 interface Door {
