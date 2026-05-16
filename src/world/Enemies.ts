@@ -6,15 +6,21 @@ const DRONE_RADIUS = 2.0;
 const DRONE_HP = 2;
 const ORBIT_RADIUS = 4;
 const ORBIT_SPEED = 0.6;
-const DETECT = 85;
-const MIN_PLAYER_DIST = 22;
+const DETECT = 90;
+const MIN_PLAYER_DIST = 20;
 const CHASE_SPEED = 7;
+const ATTACK_RANGE = 40;
+const LUNGE_SPEED = 34;
+const LUNGE_TIME = 0.35;
 
 interface Drone {
   mesh: THREE.Mesh;
   home: THREE.Vector3;
   phase: number;
   hp: number;
+  cool: number; // time until next lunge
+  lungeT: number; // remaining lunge time
+  lungeDir: THREE.Vector3;
 }
 
 interface Boom {
@@ -25,7 +31,6 @@ interface Boom {
   max: number;
 }
 
-/** Squared distance from point p to segment a-b. */
 function distToSeg(p: THREE.Vector3, a: THREE.Vector3, b: THREE.Vector3) {
   const abx = b.x - a.x,
     aby = b.y - a.y,
@@ -43,8 +48,9 @@ function distToSeg(p: THREE.Vector3, a: THREE.Vector3, b: THREE.Vector3) {
 }
 
 /**
- * Hostile drones that hover/patrol their spawn point and drift toward
- * the player when in range. Killed by laser bolts; explode with sound.
+ * Hostile drones: hover/patrol their spawn point, drift toward the
+ * player in range and periodically lunge in to attack. Killed by laser
+ * bolts (explode with sound). `threat` (0..1) drives the dynamic music.
  */
 export class EnemySwarm {
   readonly group = new THREE.Group();
@@ -52,6 +58,7 @@ export class EnemySwarm {
   private drones: Drone[] = [];
   private booms: Boom[] = [];
   private elapsed = 0;
+  private threatLevel = 0;
 
   private readonly geo = new THREE.OctahedronGeometry(1.7, 0);
   private readonly mat = new THREE.MeshStandardMaterial({
@@ -62,7 +69,8 @@ export class EnemySwarm {
     roughness: 0.4,
   });
   private readonly boomGeo = new THREE.SphereGeometry(1, 12, 12);
-  private readonly seg = { a: new THREE.Vector3(), b: new THREE.Vector3() };
+  private readonly segA = new THREE.Vector3();
+  private readonly segB = new THREE.Vector3();
   private readonly toPlayer = new THREE.Vector3();
   private readonly desired = new THREE.Vector3();
 
@@ -70,6 +78,11 @@ export class EnemySwarm {
 
   get count(): number {
     return this.drones.length;
+  }
+
+  /** 0..1 aggression level for dynamic music. */
+  get threat(): number {
+    return this.threatLevel;
   }
 
   spawn(points: THREE.Vector3[]) {
@@ -82,6 +95,9 @@ export class EnemySwarm {
         home: p.clone(),
         phase: i * 1.7,
         hp: DRONE_HP,
+        cool: 1.5 + Math.random() * 2.5,
+        lungeT: 0,
+        lungeDir: new THREE.Vector3(),
       });
     });
   }
@@ -91,34 +107,59 @@ export class EnemySwarm {
     const damp = 1 - Math.exp(-4 * dt);
     const bolts = [...weapons.bolts];
 
+    let threat = 0;
+
     for (let i = this.drones.length - 1; i >= 0; i--) {
       const dr = this.drones[i];
-      const distToPlayer = dr.home.distanceTo(playerPos);
+      const dist = dr.mesh.position.distanceTo(playerPos);
 
-      if (distToPlayer < DETECT && distToPlayer > MIN_PLAYER_DIST) {
-        this.toPlayer.subVectors(playerPos, dr.home).normalize();
-        dr.home.addScaledVector(this.toPlayer, CHASE_SPEED * dt);
+      // Aggression contribution.
+      if (dist < DETECT) {
+        threat += 0.25 + (1 - dist / DETECT) * 0.9;
+        if (dr.lungeT > 0) threat += 0.5;
       }
 
-      const ph = (this.elapsed + dr.phase) * ORBIT_SPEED;
-      this.desired.set(
-        dr.home.x + Math.cos(ph) * ORBIT_RADIUS,
-        dr.home.y + Math.sin(ph * 1.3) * ORBIT_RADIUS * 0.5,
-        dr.home.z + Math.sin(ph) * ORBIT_RADIUS,
-      );
-      dr.mesh.position.lerp(this.desired, damp);
+      // Lunge attack timer.
+      dr.cool -= dt;
+      if (dr.lungeT > 0) {
+        dr.lungeT -= dt;
+        dr.mesh.position.addScaledVector(dr.lungeDir, LUNGE_SPEED * dt);
+      } else {
+        if (
+          dr.cool <= 0 &&
+          dist < ATTACK_RANGE &&
+          dist > DRONE_RADIUS + 3
+        ) {
+          dr.lungeT = LUNGE_TIME;
+          dr.lungeDir.subVectors(playerPos, dr.mesh.position).normalize();
+          dr.cool = 1.6 + Math.random() * 2.6;
+        }
 
-      if (distToPlayer < DETECT) dr.mesh.lookAt(playerPos);
+        if (dist < DETECT && dist > MIN_PLAYER_DIST) {
+          this.toPlayer.subVectors(playerPos, dr.home).normalize();
+          dr.home.addScaledVector(this.toPlayer, CHASE_SPEED * dt);
+        }
+
+        const ph = (this.elapsed + dr.phase) * ORBIT_SPEED;
+        this.desired.set(
+          dr.home.x + Math.cos(ph) * ORBIT_RADIUS,
+          dr.home.y + Math.sin(ph * 1.3) * ORBIT_RADIUS * 0.5,
+          dr.home.z + Math.sin(ph) * ORBIT_RADIUS,
+        );
+        dr.mesh.position.lerp(this.desired, damp);
+      }
+
+      if (dist < DETECT) dr.mesh.lookAt(playerPos);
       else dr.mesh.rotation.y += dt * 1.2;
 
-      // Bolt hits: sweep each bolt's travel segment against the drone.
+      // Bolt hits.
       for (const b of bolts) {
-        this.seg.b.copy(b.mesh.position);
-        this.seg.a
+        this.segB.copy(b.mesh.position);
+        this.segA
           .copy(b.mesh.position)
           .addScaledVector(b.dir, -BOLT_SPEED * dt);
         if (
-          distToSeg(dr.mesh.position, this.seg.a, this.seg.b) <
+          distToSeg(dr.mesh.position, this.segA, this.segB) <
           DRONE_RADIUS + 0.4
         ) {
           weapons.kill(b);
@@ -132,6 +173,8 @@ export class EnemySwarm {
         }
       }
     }
+
+    this.threatLevel = Math.min(1, threat);
 
     for (let i = this.booms.length - 1; i >= 0; i--) {
       const bm = this.booms[i];

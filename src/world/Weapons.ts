@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { RAPIER } from "../physics/Physics";
+import type { Sfx } from "../audio/Sfx";
 
 export const BOLT_SPEED = 150; // units / s
 const BOLT_LIFETIME = 2.4; // s
@@ -43,6 +44,7 @@ export class WeaponSystem {
   constructor(
     private readonly world: RAPIER.World,
     private readonly excludeBody: RAPIER.RigidBody,
+    private readonly sfx: Sfx,
   ) {}
 
   get energy01(): number {
@@ -113,6 +115,7 @@ export class WeaponSystem {
           .clone()
           .addScaledVector(b.dir, hit.timeOfImpact);
         this.spawnImpact(p);
+        this.sfx.impact();
         this.removeBolt(i);
         continue;
       }

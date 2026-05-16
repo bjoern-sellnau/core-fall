@@ -1,24 +1,41 @@
 /**
- * Procedurally synthesized, Descent-style driving loop (Web Audio API).
- * No external assets: bass + arpeggio lead + drums on a 16-step sequencer.
- * Must be started from a user gesture (browser autoplay policy).
+ * Procedurally synthesized COREFALL track (Web Audio API), no assets.
+ * A multi-bar arrangement (intro / groove / build / peak) rather than a
+ * single repeating loop, with setIntensity() driving extra layers and
+ * drive when the action heats up. Start from a user gesture.
  */
 
 const BPM = 138;
 
-// MIDI note patterns over 16 sixteenth-steps (null = rest). Key: A minor.
-const BASS: (number | null)[] = [
-  33, null, 33, 33, null, 33, 36, null,
-  33, null, 33, 33, 40, null, 38, null,
-];
-const LEAD: (number | null)[] = [
-  69, 72, 76, 72, 74, 77, 81, 77,
-  69, 72, 76, 72, 67, 71, 74, 71,
-];
-const KICK = [0, 4, 8, 12];
-const SNARE = [4, 12];
+type Pat = (number | null)[];
+interface Bar {
+  bass: Pat;
+  lead: Pat;
+}
 
 const midiToFreq = (m: number) => 440 * Math.pow(2, (m - 69) / 12);
+
+// Bar palette (A minor). 16 sixteenth-steps each.
+const A: Bar = {
+  bass: [33, null, 33, 33, null, 33, 36, null, 33, null, 33, 33, 40, null, 38, null],
+  lead: [null, null, 76, null, null, 72, null, null, null, null, 79, null, 76, null, 72, null],
+};
+const B: Bar = {
+  bass: [33, null, 36, null, 38, null, 40, null, 43, null, 40, null, 38, null, 36, null],
+  lead: [69, 72, 76, 72, 74, 77, 81, 77, 69, 72, 76, 72, 67, 71, 74, 71],
+};
+const C: Bar = {
+  bass: [33, 33, null, 33, 36, 36, null, 36, 40, 40, null, 40, 38, null, 43, null],
+  lead: [76, 79, 83, 79, 81, 84, 88, 84, 76, 79, 83, 79, 74, 78, 81, 85],
+};
+const D: Bar = {
+  bass: [33, 33, 36, 36, 40, 40, 38, 38, 33, 33, 36, 36, 43, 43, 40, 38],
+  lead: [81, 84, 88, 84, 81, 84, 88, 91, 79, 83, 86, 83, 76, 79, 83, 88],
+};
+
+const BARS = [A, B, C, D];
+// 16-bar arrangement → a composed track that loops.
+const ARRANGEMENT = [0, 0, 1, 0, 0, 1, 2, 2, 0, 0, 1, 0, 2, 3, 3, 1];
 
 export class MusicEngine {
   private ctx: AudioContext | null = null;
@@ -29,18 +46,22 @@ export class MusicEngine {
   private timer: number | null = null;
   private nextNoteTime = 0;
   private step = 0;
+  private barPos = 0;
   private muted = false;
 
-  private readonly lookahead = 0.1; // seconds scheduled ahead
-  private readonly tick = 25; // scheduler poll (ms)
+  private intensity = 0;
+  private intensityTarget = 0;
 
-  /** Lazily builds the audio graph and starts the loop. Call from a gesture. */
+  private readonly lookahead = 0.1;
+  private readonly tick = 25;
+
   start() {
     if (!this.ctx) this.build();
     void this.ctx!.resume();
     if (this.timer === null) {
       this.nextNoteTime = this.ctx!.currentTime + 0.06;
       this.step = 0;
+      this.barPos = 0;
       this.timer = window.setInterval(this.scheduler, this.tick);
     }
   }
@@ -52,29 +73,39 @@ export class MusicEngine {
     }
   }
 
+  /** Aggression 0..1: ramps in extra layers and overall drive. */
+  setIntensity(x: number) {
+    this.intensityTarget = Math.max(0, Math.min(1, x));
+  }
+
   toggleMute(): boolean {
     this.muted = !this.muted;
     if (this.ctx) {
       const g = this.master.gain;
       g.cancelScheduledValues(this.ctx.currentTime);
       g.linearRampToValueAtTime(
-        this.muted ? 0.0001 : 0.26,
+        this.muted ? 0.0001 : this.targetGain(),
         this.ctx.currentTime + 0.25,
       );
     }
     return this.muted;
   }
 
+  private targetGain() {
+    return 0.24 + this.intensity * 0.1;
+  }
+
   private build() {
     const Ctx: typeof AudioContext =
-      window.AudioContext ?? (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      window.AudioContext ??
+      (window as unknown as { webkitAudioContext: typeof AudioContext })
+        .webkitAudioContext;
     this.ctx = new Ctx();
 
     this.master = this.ctx.createGain();
-    this.master.gain.value = 0.26;
+    this.master.gain.value = 0.24;
     this.master.connect(this.ctx.destination);
 
-    // Stereo-ish slap delay for the lead.
     this.delay = this.ctx.createDelay(0.5);
     this.delay.delayTime.value = (60 / BPM) * 0.75;
     const feedback = this.ctx.createGain();
@@ -86,7 +117,6 @@ export class MusicEngine {
     this.delay.connect(delayMix);
     delayMix.connect(this.master);
 
-    // One-shot white-noise buffer reused for drums.
     const len = this.ctx.sampleRate * 0.5;
     this.noise = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
     const d = this.noise.getChannelData(0);
@@ -97,25 +127,45 @@ export class MusicEngine {
     const ctx = this.ctx!;
     const sixteenth = 60 / BPM / 4;
     while (this.nextNoteTime < ctx.currentTime + this.lookahead) {
+      this.intensity += (this.intensityTarget - this.intensity) * 0.06;
+      if (!this.muted) {
+        const g = this.master.gain;
+        g.cancelScheduledValues(this.nextNoteTime);
+        g.linearRampToValueAtTime(this.targetGain(), this.nextNoteTime + 0.05);
+      }
       this.scheduleStep(this.step, this.nextNoteTime);
       this.nextNoteTime += sixteenth;
-      this.step = (this.step + 1) % 16;
+      this.step++;
+      if (this.step >= 16) {
+        this.step = 0;
+        this.barPos = (this.barPos + 1) % ARRANGEMENT.length;
+      }
     }
   };
 
   private scheduleStep(step: number, t: number) {
-    const bass = BASS[step];
-    if (bass !== null) this.playBass(t, midiToFreq(bass));
+    const bar = BARS[ARRANGEMENT[this.barPos]];
+    const it = this.intensity;
 
-    const lead = LEAD[step];
-    if (lead !== null) this.playLead(t, midiToFreq(lead));
+    const bn = bar.bass[step];
+    if (bn !== null) this.playBass(t, midiToFreq(bn), it);
 
-    if (KICK.includes(step)) this.playKick(t);
-    if (SNARE.includes(step)) this.playSnare(t);
-    this.playHat(t, step % 2 === 1); // accent offbeats
+    const ln = bar.lead[step];
+    if (ln !== null) {
+      this.playLead(t, midiToFreq(ln), 0.14);
+      if (it > 0.45) this.playLead(t, midiToFreq(ln + 12), 0.07 * it);
+    }
+
+    if (step % 4 === 0) this.playKick(t);
+    if (it > 0.6 && step === 14) this.playKick(t);
+    if (step === 4 || step === 12) this.playSnare(t, 0.4);
+    if (it > 0.55 && (step === 7 || step === 15)) this.playSnare(t, 0.18);
+
+    const offbeat = step % 2 === 1;
+    if (offbeat || it > 0.5) this.playHat(t, offbeat, it);
   }
 
-  private playBass(t: number, freq: number) {
+  private playBass(t: number, freq: number, it: number) {
     const ctx = this.ctx!;
     const osc = ctx.createOscillator();
     osc.type = "sawtooth";
@@ -123,7 +173,7 @@ export class MusicEngine {
 
     const lp = ctx.createBiquadFilter();
     lp.type = "lowpass";
-    lp.frequency.setValueAtTime(freq * 8, t);
+    lp.frequency.setValueAtTime(freq * (8 + it * 6), t);
     lp.frequency.exponentialRampToValueAtTime(freq * 2.5, t + 0.18);
     lp.Q.value = 6;
 
@@ -139,7 +189,7 @@ export class MusicEngine {
     osc.stop(t + 0.22);
   }
 
-  private playLead(t: number, freq: number) {
+  private playLead(t: number, freq: number, peak: number) {
     const ctx = this.ctx!;
     const osc = ctx.createOscillator();
     osc.type = "square";
@@ -151,7 +201,7 @@ export class MusicEngine {
 
     const g = ctx.createGain();
     g.gain.setValueAtTime(0.0001, t);
-    g.gain.exponentialRampToValueAtTime(0.14, t + 0.004);
+    g.gain.exponentialRampToValueAtTime(peak, t + 0.004);
     g.gain.exponentialRampToValueAtTime(0.0001, t + 0.12);
 
     osc.connect(hp);
@@ -179,7 +229,7 @@ export class MusicEngine {
     osc.stop(t + 0.22);
   }
 
-  private playSnare(t: number) {
+  private playSnare(t: number, peak: number) {
     const ctx = this.ctx!;
     const src = ctx.createBufferSource();
     src.buffer = this.noise;
@@ -190,7 +240,7 @@ export class MusicEngine {
     bp.Q.value = 0.8;
 
     const g = ctx.createGain();
-    g.gain.setValueAtTime(0.4, t);
+    g.gain.setValueAtTime(peak, t);
     g.gain.exponentialRampToValueAtTime(0.0001, t + 0.16);
 
     src.connect(bp);
@@ -200,7 +250,7 @@ export class MusicEngine {
     src.stop(t + 0.18);
   }
 
-  private playHat(t: number, accent: boolean) {
+  private playHat(t: number, accent: boolean, it: number) {
     const ctx = this.ctx!;
     const src = ctx.createBufferSource();
     src.buffer = this.noise;
@@ -210,7 +260,7 @@ export class MusicEngine {
     hp.frequency.value = 7500;
 
     const g = ctx.createGain();
-    const peak = accent ? 0.16 : 0.07;
+    const peak = (accent ? 0.16 : 0.07) * (0.7 + it * 0.6);
     g.gain.setValueAtTime(peak, t);
     g.gain.exponentialRampToValueAtTime(0.0001, t + (accent ? 0.06 : 0.03));
 

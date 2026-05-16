@@ -53,7 +53,11 @@ export class PlayState implements GameState {
     );
     this.ship.syncCamera(this.camera);
 
-    this.weapons = new WeaponSystem(this.physics.world, this.ship.rigidBody);
+    this.weapons = new WeaponSystem(
+      this.physics.world,
+      this.ship.rigidBody,
+      this.game.sfx,
+    );
     this.scene.add(this.weapons.group);
 
     this.enemies = new EnemySwarm(this.game.sfx);
@@ -145,6 +149,7 @@ export class PlayState implements GameState {
       }
       this.weapons.update(dt);
       this.enemies.update(dt, this.ship.position, this.weapons);
+      this.game.music.setIntensity(this.enemies.threat);
 
       this.speedEl.textContent = this.ship.speed.toFixed(0);
       this.coreEl.textContent = this.ship.position

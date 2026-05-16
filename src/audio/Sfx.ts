@@ -65,6 +65,45 @@ export class Sfx {
     detune.stop(t + 0.18);
   }
 
+  /** Short metallic tick for a bolt striking rock/metal. */
+  impact() {
+    if (!this.ctx) return;
+    const ctx = this.ctx;
+    const t = ctx.currentTime;
+
+    const src = ctx.createBufferSource();
+    src.buffer = this.noise;
+
+    const bp = ctx.createBiquadFilter();
+    bp.type = "bandpass";
+    bp.frequency.value = 2600;
+    bp.Q.value = 1.6;
+
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.35, t);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.09);
+
+    const ping = ctx.createOscillator();
+    ping.type = "triangle";
+    ping.frequency.setValueAtTime(1500, t);
+    ping.frequency.exponentialRampToValueAtTime(700, t + 0.06);
+
+    const pg = ctx.createGain();
+    pg.gain.setValueAtTime(0.18, t);
+    pg.gain.exponentialRampToValueAtTime(0.0001, t + 0.07);
+
+    src.connect(bp);
+    bp.connect(g);
+    g.connect(this.master);
+    ping.connect(pg);
+    pg.connect(this.master);
+
+    src.start(t);
+    src.stop(t + 0.12);
+    ping.start(t);
+    ping.stop(t + 0.1);
+  }
+
   /** Noisy boom with a low thump; scale ~1 default, larger = bigger. */
   explosion(scale = 1) {
     if (!this.ctx) return;
