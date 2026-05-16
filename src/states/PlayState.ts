@@ -9,12 +9,16 @@ import { WeaponSystem } from "../world/Weapons";
 import { EnemySwarm, difficultyConfig } from "../world/Enemies";
 import { PickupField, type PickupKind } from "../world/Pickups";
 import { DeathFx } from "../world/DeathFx";
+import { Doors } from "../world/Doors";
 
 const PICKUP_INFO: Record<PickupKind, { css: string; label: string }> = {
   health: { css: "#44ff88", label: "HULL +35" },
   shield: { css: "#46d8ff", label: "SHIELD UP" },
   rockets: { css: "#ff9a3a", label: "ROCKETS +6" },
   laser: { css: "#ff5ce0", label: "LASER UP" },
+  keyblue: { css: "#3a7bff", label: "BLUE KEY" },
+  keyred: { css: "#ff3a3a", label: "RED KEY" },
+  keyyellow: { css: "#ffd23a", label: "YELLOW KEY" },
 };
 
 const MAX_HULL = 100;
@@ -39,6 +43,12 @@ export class PlayState implements GameState {
   private weapons!: WeaponSystem;
   private enemies!: EnemySwarm;
   private pickups!: PickupField;
+  private doors!: Doors;
+
+  private keys = { blue: false, red: false, yellow: false };
+  private viewMode: "fp" | "chase" = "fp";
+  private viewKeyDown = false;
+  private keysEl!: HTMLElement;
 
   private hull = MAX_HULL;
   private shield = MAX_SHIELD;
@@ -96,7 +106,12 @@ export class PlayState implements GameState {
       this.level.spawnPosition,
       this.level.spawnQuaternion,
     );
+    this.ship.model.visible = false;
+    this.scene.add(this.ship.model);
     this.ship.syncCamera(this.camera);
+
+    this.doors = new Doors(this.physics.world, this.level.doorDefs);
+    this.scene.add(this.doors.group);
 
     this.weapons = new WeaponSystem(
       this.physics.world,
@@ -115,6 +130,9 @@ export class PlayState implements GameState {
 
     this.pickups = new PickupField(this.game.sfx);
     this.pickups.spawn(this.level.pickupSpawns);
+    for (const k of this.level.keySpawns) {
+      this.pickups.add(k.pos, k.kind as PickupKind);
+    }
     this.scene.add(this.pickups.group);
 
     this.deathFx = new DeathFx();
@@ -127,14 +145,15 @@ export class PlayState implements GameState {
       <div class="hud__flash" id="cf-flash"></div>
       <div class="hud__pickup" id="cf-pickup"></div>
       <div class="hud__crosshair"></div>
-      <div class="hud__hint">CLICK TO FLY &middot; LMB LASER &middot; RMB ROCKET &middot; ESC RELEASE</div>
+      <div class="hud__hint">LMB LASER &middot; RMB ROCKET &middot; V VIEW &middot; ESC RELEASE</div>
       <div class="hud__readout">
         COREFALL // TEST RUN<br />
         SPEED&nbsp;&nbsp;&nbsp;&nbsp; <span id="cf-speed">0</span> u/s<br />
         CORE&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <span id="cf-core">0</span> m<br />
         HOSTILES&nbsp; <span id="cf-enemies">0</span><br />
         FACTORIES <span id="cf-factories">0</span><br />
-        LIVES&nbsp;&nbsp;&nbsp;&nbsp; <span id="cf-lives">5</span>
+        LIVES&nbsp;&nbsp;&nbsp;&nbsp; <span id="cf-lives">5</span><br />
+        KEYS&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <span id="cf-keys"></span>
       </div>
       <div class="hud__status">
         <div class="hud__bar-label">HULL</div>
@@ -160,6 +179,7 @@ export class PlayState implements GameState {
     this.flashEl = this.root.querySelector<HTMLElement>("#cf-flash")!;
     this.pickupEl = this.root.querySelector<HTMLElement>("#cf-pickup")!;
     this.livesEl = this.root.querySelector<HTMLElement>("#cf-lives")!;
+    this.keysEl = this.root.querySelector<HTMLElement>("#cf-keys")!;
 
     this.pause = document.createElement("div");
     this.pause.className = "menu";
@@ -261,11 +281,28 @@ export class PlayState implements GameState {
 
     this.pause.classList.toggle("hidden", locked);
 
+    const vDown = this.game.input.isDown("KeyV");
+    if (locked && vDown && !this.viewKeyDown) {
+      this.viewMode = this.viewMode === "fp" ? "chase" : "fp";
+    }
+    this.viewKeyDown = vDown;
+
     if (locked) {
       this.ship.update(dt, this.game.input);
       this.physics.step(dt);
-      this.ship.syncCamera(this.camera);
       this.level.update(dt);
+
+      this.ship.model.position.copy(this.ship.position);
+      this.ship.model.quaternion.copy(this.ship.quaternion);
+      if (this.viewMode === "chase") {
+        this.ship.model.visible = true;
+        this.updateChaseCamera();
+      } else {
+        this.ship.model.visible = false;
+        this.ship.syncCamera(this.camera);
+      }
+
+      this.doors.update(dt, this.ship.position, this.keys);
 
       this.tmpFwd.set(0, 0, -1).applyQuaternion(this.ship.quaternion);
       this.tmpRight.set(1, 0, 0).applyQuaternion(this.ship.quaternion);
@@ -294,8 +331,14 @@ export class PlayState implements GameState {
           this.shield = MAX_SHIELD;
         } else if (k === "rockets") {
           this.weapons.addRockets(ROCKET_PICKUP);
-        } else {
+        } else if (k === "laser") {
           this.weapons.addLaserLevel();
+        } else if (k === "keyblue") {
+          this.keys.blue = true;
+        } else if (k === "keyred") {
+          this.keys.red = true;
+        } else if (k === "keyyellow") {
+          this.keys.yellow = true;
         }
         const info = PICKUP_INFO[k];
         this.flashT = 0.55;
@@ -348,6 +391,14 @@ export class PlayState implements GameState {
       this.enemyEl.textContent = this.enemies.count.toFixed(0);
       this.factoryEl.textContent = this.enemies.factoryCount.toFixed(0);
       this.livesEl.textContent = this.lives.toFixed(0);
+      const key = (on: boolean, c: string, ch: string) =>
+        `<span style="color:${on ? c : "#33424f"}">${ch}</span>`;
+      this.keysEl.innerHTML =
+        key(this.keys.blue, "#3a7bff", "B") +
+        " " +
+        key(this.keys.red, "#ff3a3a", "R") +
+        " " +
+        key(this.keys.yellow, "#ffd23a", "Y");
       this.hullEl.style.width = `${Math.max(0, (this.hull / MAX_HULL) * 100).toFixed(0)}%`;
       this.shieldEl.style.width = `${((this.shield / MAX_SHIELD) * 100).toFixed(0)}%`;
       this.rktEl.textContent = this.weapons.rocketAmmo.toFixed(0);
@@ -360,9 +411,40 @@ export class PlayState implements GameState {
     this.game.renderer.render(this.scene, this.camera);
   }
 
+  private updateChaseCamera() {
+    const fwd = this.tmpFwd.set(0, 0, -1).applyQuaternion(this.ship.quaternion);
+    const up = this.tmpRight
+      .set(0, 1, 0)
+      .applyQuaternion(this.ship.quaternion);
+    const off = fwd
+      .clone()
+      .multiplyScalar(-9)
+      .addScaledVector(up, 3);
+    const want = off.length();
+    const dir = off.multiplyScalar(1 / want);
+    let dist = want;
+    const hit = this.physics.world.castRay(
+      new RAPIER.Ray(this.ship.position, dir),
+      want,
+      true,
+      undefined,
+      undefined,
+      undefined,
+      this.ship.rigidBody,
+    );
+    if (hit) dist = Math.max(2, hit.timeOfImpact - 1.2);
+    this.camera.position.copy(this.ship.position).addScaledVector(dir, dist);
+    this.camera.lookAt(
+      this.ship.position.x + fwd.x * 6,
+      this.ship.position.y + fwd.y * 6,
+      this.ship.position.z + fwd.z * 6,
+    );
+  }
+
   private updateDeath(dt: number) {
     this.pause.classList.add("hidden");
     this.game.music.setIntensity(0);
+    this.ship.model.visible = false;
 
     // Slow-motion spectacle; real time still drives the SPACE prompt.
     const sdt = dt * 0.3;
@@ -409,9 +491,16 @@ export class PlayState implements GameState {
     this.pause.remove();
     this.deathEl.remove();
     this.deathFx.dispose();
+    this.doors.dispose();
     this.pickups.dispose();
     this.enemies.dispose();
     this.weapons.dispose();
+    this.ship.model.traverse((o) => {
+      const m = o as THREE.Mesh;
+      m.geometry?.dispose?.();
+      const mat = m.material as THREE.Material | undefined;
+      mat?.dispose?.();
+    });
     this.level.dispose();
     this.physics.dispose();
   }

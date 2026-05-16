@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { RAPIER } from "../physics/Physics";
+import type { DoorDef } from "./Doors";
 
 interface Box {
   min: [number, number, number];
@@ -56,16 +57,24 @@ export class Level {
   readonly enemySpawns: THREE.Vector3[] = [];
   readonly factorySpawns: THREE.Vector3[] = [];
   readonly pickupSpawns: THREE.Vector3[] = [];
+  readonly keySpawns: { pos: THREE.Vector3; kind: string }[] = [];
+  readonly doorDefs: DoorDef[] = [
+    { pos: [0, 0, -26], size: [11, 10, 1.6], color: "normal" },
+    { pos: [0, 0, -80], size: [11, 11, 1.6], color: "blue" },
+    { pos: [0, -6, -210], size: [11, 11, 1.6], color: "yellow" },
+    { pos: [0, -22, -336], size: [12, 12, 1.6], color: "red" },
+    { pos: [0, -8, -450], size: [12, 14, 1.6], color: "normal" },
+  ];
 
   private reactor: THREE.Mesh;
   private reactorLight: THREE.PointLight;
   private elapsed = 0;
 
-  private static readonly CORE = new THREE.Vector3(0, -6, -436);
+  private static readonly CORE = new THREE.Vector3(0, -6, -470);
 
   constructor(world: RAPIER.World) {
-    // Long Descent-style mine with two unlit "dark" sectors and a
-    // side branch, ending in the reactor chamber.
+    // Long Descent-style mine: dark sectors, side branches, locked
+    // doors, ending in the reactor chamber.
     const boxes: Box[] = [
       box(0, 0, -8, 26, 16, 28, 14), // 0 start
       box(0, 0, -32, 9, 8, 26, 7), // 1 corridor
@@ -83,7 +92,11 @@ export class Level {
       box(0, -22, -342, 10, 10, 28, 6), // 13 corridor
       box(0, -18, -370, 30, 18, 30, 15), // 14 room
       box(0, -12, -400, 10, 10, 36, 6), // 15 corridor
-      box(0, -6, -436, 48, 32, 48, 0, true), // 16 reactor room
+      box(-24, 0, -118, 30, 8, 9, 7), // 16 -X branch corridor
+      box(-46, 0, -118, 22, 16, 24, 14, true), // 17 -X branch room
+      box(0, -10, -430, 30, 18, 30, 14), // 18 room
+      box(0, -8, -450, 10, 12, 24, 6), // 19 corridor
+      box(0, -6, -470, 48, 32, 48, 0, true), // 20 reactor room
     ];
 
     const verts: number[] = [];
@@ -168,10 +181,16 @@ export class Level {
         (boxes[i].min[1] + boxes[i].max[1]) / 2,
         (boxes[i].min[2] + boxes[i].max[2]) / 2,
       );
-    for (const i of [2, 6, 10, 14]) this.factorySpawns.push(center(i));
-    for (const i of [1, 3, 4, 8, 11, 13, 15]) {
+    for (const i of [2, 6, 10, 14, 17]) this.factorySpawns.push(center(i));
+    for (const i of [1, 3, 5, 11, 13, 15, 18]) {
       this.pickupSpawns.push(center(i).add(new THREE.Vector3(0, 2, 0)));
     }
+    // Access keys, each on the main path before its locked door.
+    this.keySpawns.push(
+      { pos: center(2).add(new THREE.Vector3(0, 3, 0)), kind: "keyblue" },
+      { pos: center(8).add(new THREE.Vector3(0, 3, 0)), kind: "keyyellow" },
+      { pos: center(12).add(new THREE.Vector3(0, 3, 0)), kind: "keyred" },
+    );
 
     const positions = new Float32Array(verts);
     const geo = new THREE.BufferGeometry();

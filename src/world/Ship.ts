@@ -18,6 +18,7 @@ const LEVEL_RATE = 6; // how fast "auto-level" rights the ship
 export class Ship {
   readonly position = new THREE.Vector3();
   readonly quaternion = new THREE.Quaternion();
+  readonly model = new THREE.Group();
 
   private velocity = new THREE.Vector3();
   private body: RAPIER.RigidBody;
@@ -56,6 +57,55 @@ export class Ship {
     this.controller = world.createCharacterController(0.05);
     this.controller.setSlideEnabled(true);
     this.controller.enableAutostep(0.3, 0.1, true);
+
+    this.buildModel();
+  }
+
+  private buildModel() {
+    const hull = new THREE.MeshStandardMaterial({
+      color: 0x9fb6c8,
+      metalness: 0.8,
+      roughness: 0.35,
+      emissive: 0x0c1a26,
+    });
+    const accent = new THREE.MeshStandardMaterial({
+      color: 0x2a3a48,
+      metalness: 0.7,
+      roughness: 0.5,
+    });
+
+    // Fuselage: cone pointing along -Z (ship forward).
+    const body = new THREE.Mesh(new THREE.ConeGeometry(0.9, 3.4, 12), hull);
+    body.rotation.x = -Math.PI / 2;
+    this.model.add(body);
+
+    const cockpit = new THREE.Mesh(
+      new THREE.SphereGeometry(0.55, 12, 10),
+      new THREE.MeshStandardMaterial({
+        color: 0x38f0e6,
+        emissive: 0x1f8f88,
+        emissiveIntensity: 0.8,
+        metalness: 0.4,
+        roughness: 0.25,
+      }),
+    );
+    cockpit.position.set(0, 0.25, -0.2);
+    this.model.add(cockpit);
+
+    for (const s of [-1, 1]) {
+      const wing = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.18, 1.3), accent);
+      wing.position.set(s * 1.5, -0.1, 0.7);
+      wing.rotation.z = s * 0.18;
+      this.model.add(wing);
+    }
+
+    const glow = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.4, 0.55, 0.5, 12),
+      new THREE.MeshBasicMaterial({ color: 0x66f0ff }),
+    );
+    glow.rotation.x = Math.PI / 2;
+    glow.position.set(0, 0, 1.7);
+    this.model.add(glow);
   }
 
   get speed(): number {
