@@ -6,8 +6,15 @@ import { PhysicsWorld } from "../physics/Physics";
 import { Level } from "../world/Level";
 import { Ship } from "../world/Ship";
 import { WeaponSystem } from "../world/Weapons";
-import { EnemySwarm } from "../world/Enemies";
-import { PickupField } from "../world/Pickups";
+import { EnemySwarm, difficultyConfig } from "../world/Enemies";
+import { PickupField, type PickupKind } from "../world/Pickups";
+
+const PICKUP_INFO: Record<PickupKind, { css: string; label: string }> = {
+  health: { css: "#44ff88", label: "HULL +35" },
+  shield: { css: "#46d8ff", label: "SHIELD UP" },
+  rockets: { css: "#ff9a3a", label: "ROCKETS +6" },
+  laser: { css: "#ff5ce0", label: "LASER UP" },
+};
 
 const MAX_HULL = 100;
 const MAX_SHIELD = 100;
@@ -45,6 +52,11 @@ export class PlayState implements GameState {
   private shieldEl!: HTMLElement;
   private rktEl!: HTMLElement;
   private laserEl!: HTMLElement;
+  private factoryEl!: HTMLElement;
+  private flashEl!: HTMLElement;
+  private pickupEl!: HTMLElement;
+  private flashT = 0;
+  private flashColor = "#fff";
   private wantMenu = false;
   private musicKeyDown = false;
 
@@ -79,8 +91,11 @@ export class PlayState implements GameState {
     );
     this.scene.add(this.weapons.group);
 
-    this.enemies = new EnemySwarm(this.game.sfx);
-    this.enemies.spawn(this.level.enemySpawns);
+    this.enemies = new EnemySwarm(
+      this.game.sfx,
+      difficultyConfig(this.game.difficulty),
+    );
+    this.enemies.spawn(this.level.enemySpawns, this.level.factorySpawns);
     this.scene.add(this.enemies.group);
 
     this.pickups = new PickupField(this.game.sfx);
@@ -91,13 +106,16 @@ export class PlayState implements GameState {
     this.root = document.createElement("div");
     this.root.className = "hud";
     this.root.innerHTML = `
+      <div class="hud__flash" id="cf-flash"></div>
+      <div class="hud__pickup" id="cf-pickup"></div>
       <div class="hud__crosshair"></div>
       <div class="hud__hint">CLICK TO FLY &middot; LMB LASER &middot; RMB ROCKET &middot; ESC RELEASE</div>
       <div class="hud__readout">
         COREFALL // TEST RUN<br />
-        SPEED&nbsp;&nbsp;&nbsp; <span id="cf-speed">0</span> u/s<br />
-        CORE&nbsp;&nbsp;&nbsp;&nbsp; <span id="cf-core">0</span> m<br />
-        HOSTILES <span id="cf-enemies">0</span>
+        SPEED&nbsp;&nbsp;&nbsp;&nbsp; <span id="cf-speed">0</span> u/s<br />
+        CORE&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <span id="cf-core">0</span> m<br />
+        HOSTILES&nbsp; <span id="cf-enemies">0</span><br />
+        FACTORIES <span id="cf-factories">0</span>
       </div>
       <div class="hud__status">
         <div class="hud__bar-label">HULL</div>
@@ -119,6 +137,9 @@ export class PlayState implements GameState {
     this.shieldEl = this.root.querySelector<HTMLElement>("#cf-shield")!;
     this.rktEl = this.root.querySelector<HTMLElement>("#cf-rkt")!;
     this.laserEl = this.root.querySelector<HTMLElement>("#cf-laser")!;
+    this.factoryEl = this.root.querySelector<HTMLElement>("#cf-factories")!;
+    this.flashEl = this.root.querySelector<HTMLElement>("#cf-flash")!;
+    this.pickupEl = this.root.querySelector<HTMLElement>("#cf-pickup")!;
 
     this.pause = document.createElement("div");
     this.pause.className = "menu";
@@ -201,6 +222,25 @@ export class PlayState implements GameState {
         } else {
           this.weapons.addLaserLevel();
         }
+        const info = PICKUP_INFO[k];
+        this.flashT = 0.55;
+        this.flashColor = info.css;
+        this.pickupEl.textContent =
+          k === "laser" ? `LASER L${this.weapons.laserLevel}` : info.label;
+        this.pickupEl.style.color = info.css;
+      }
+
+      // Descent-style colour flicker after a pickup.
+      if (this.flashT > 0) {
+        this.flashT = Math.max(0, this.flashT - dt);
+        const k = this.flashT / 0.55;
+        const strobe = Math.floor(this.flashT * 26) % 2 ? 1 : 0.3;
+        this.flashEl.style.background = this.flashColor;
+        this.flashEl.style.opacity = `${k * 0.5 * strobe}`;
+        this.pickupEl.style.opacity = `${Math.min(1, k * 1.6)}`;
+      } else {
+        this.flashEl.style.opacity = "0";
+        this.pickupEl.style.opacity = "0";
       }
 
       // Damage / shield / death.
@@ -233,6 +273,7 @@ export class PlayState implements GameState {
         .distanceTo(this.level.corePosition)
         .toFixed(0);
       this.enemyEl.textContent = this.enemies.count.toFixed(0);
+      this.factoryEl.textContent = this.enemies.factoryCount.toFixed(0);
       this.hullEl.style.width = `${Math.max(0, (this.hull / MAX_HULL) * 100).toFixed(0)}%`;
       this.shieldEl.style.width = `${((this.shield / MAX_SHIELD) * 100).toFixed(0)}%`;
       this.rktEl.textContent = this.weapons.rocketAmmo.toFixed(0);

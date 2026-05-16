@@ -9,26 +9,48 @@ import {
 
 const DRONE_RADIUS = 2.0;
 const SHIP_RADIUS = 2.0;
-const DRONE_HP = 2;
-const ORBIT_RADIUS = 4;
+const ORBIT_RADIUS = 2.5;
 const ORBIT_SPEED = 0.6;
+const LEASH = 6; // how far the patrol point may drift from spawn
+const MAXR = 9; // hard cap: drone stays within this of spawn (containment)
 const DETECT = 95;
-const MIN_PLAYER_DIST = 20;
-const CHASE_SPEED = 7;
+const CHASE_SPEED = 6;
 const ATTACK_RANGE = 40;
-const LUNGE_SPEED = 34;
-const LUNGE_TIME = 0.35;
+const LUNGE_SPEED = 26;
+const LUNGE_TIME = 0.32;
 const SHOOT_RANGE = 95;
 const EBOLT_SPEED = 58;
 const EBOLT_LIFE = 3.5;
-const ENEMY_DMG = 12;
 const ROCKET_TRIGGER = 3.5;
 const SPLASH_RADIUS = 13;
+const FACTORY_RADIUS = 3.6;
+
+export interface DiffConfig {
+  droneHp: number;
+  enemyDmg: number;
+  factoryInterval: number;
+  maxDrones: number;
+  factoryHp: number;
+  initialFrac: number;
+}
+
+const TABLE: Record<number, DiffConfig> = {
+  1: { droneHp: 1, enemyDmg: 7, factoryInterval: 9, maxDrones: 6, factoryHp: 8, initialFrac: 0.5 },
+  2: { droneHp: 2, enemyDmg: 10, factoryInterval: 7, maxDrones: 9, factoryHp: 10, initialFrac: 0.7 },
+  3: { droneHp: 2, enemyDmg: 13, factoryInterval: 5.5, maxDrones: 12, factoryHp: 12, initialFrac: 0.85 },
+  4: { droneHp: 3, enemyDmg: 17, factoryInterval: 4.5, maxDrones: 15, factoryHp: 14, initialFrac: 1 },
+  5: { droneHp: 3, enemyDmg: 22, factoryInterval: 3.5, maxDrones: 18, factoryHp: 16, initialFrac: 1 },
+};
+
+export function difficultyConfig(level: number): DiffConfig {
+  return TABLE[Math.max(1, Math.min(5, level))];
+}
 
 type Kind = "dasher" | "shooter";
 
 interface Drone {
   mesh: THREE.Mesh;
+  origin: THREE.Vector3;
   home: THREE.Vector3;
   phase: number;
   hp: number;
@@ -36,6 +58,14 @@ interface Drone {
   cool: number;
   lungeT: number;
   lungeDir: THREE.Vector3;
+  dead: boolean;
+}
+
+interface Factory {
+  mesh: THREE.Mesh;
+  pos: THREE.Vector3;
+  hp: number;
+  cool: number;
   dead: boolean;
 }
 
@@ -69,24 +99,38 @@ function distToSeg(p: THREE.Vector3, a: THREE.Vector3, b: THREE.Vector3) {
   return Math.sqrt(dx * dx + dy * dy + dz * dz);
 }
 
+/** Clamp `v` to within `r` of `c` (keeps drones inside their room). */
+function clampTo(v: THREE.Vector3, c: THREE.Vector3, r: number) {
+  const dx = v.x - c.x,
+    dy = v.y - c.y,
+    dz = v.z - c.z;
+  const d = Math.hypot(dx, dy, dz);
+  if (d > r) {
+    const s = r / d;
+    v.set(c.x + dx * s, c.y + dy * s, c.z + dz * s);
+  }
+}
+
 /**
- * Hostile drones in two flavours: "dasher" lunges in melee, "shooter"
- * stays at range and fires plasma bolts. Killed by lasers/rockets;
- * `threat` (0..1) drives the dynamic music, `consumeDamage()` reports
- * hits dealt to the player.
+ * Hostiles: "dasher" lunges, "shooter" fires at range. Factories keep
+ * producing drones until destroyed. Drones are leashed to their spawn
+ * so they can't drift out of the level.
  */
 export class EnemySwarm {
   readonly group = new THREE.Group();
 
   private drones: Drone[] = [];
+  private factories: Factory[] = [];
   private ebolts: EBolt[] = [];
   private booms: Boom[] = [];
   private elapsed = 0;
   private threatLevel = 0;
   private pendingDamage = 0;
+  private spawnCount = 0;
 
   private readonly geoD = new THREE.OctahedronGeometry(1.7, 0);
   private readonly geoS = new THREE.IcosahedronGeometry(1.8, 0);
+  private readonly geoF = new THREE.BoxGeometry(5, 5, 5);
   private readonly matD = new THREE.MeshStandardMaterial({
     color: 0x223040,
     emissive: 0xff3344,
@@ -101,6 +145,13 @@ export class EnemySwarm {
     metalness: 0.6,
     roughness: 0.4,
   });
+  private readonly matF = new THREE.MeshStandardMaterial({
+    color: 0x3a1c1c,
+    emissive: 0xff5522,
+    emissiveIntensity: 0.9,
+    metalness: 0.5,
+    roughness: 0.6,
+  });
   private readonly eboltGeo = new THREE.SphereGeometry(0.5, 8, 8);
   private readonly eboltMat = new THREE.MeshBasicMaterial({ color: 0xff66cc });
   private readonly boomGeo = new THREE.SphereGeometry(1, 12, 12);
@@ -109,10 +160,16 @@ export class EnemySwarm {
   private readonly tmp = new THREE.Vector3();
   private readonly desired = new THREE.Vector3();
 
-  constructor(private readonly sfx: Sfx) {}
+  constructor(
+    private readonly sfx: Sfx,
+    private readonly cfg: DiffConfig,
+  ) {}
 
   get count(): number {
     return this.drones.length;
+  }
+  get factoryCount(): number {
+    return this.factories.length;
   }
   get threat(): number {
     return this.threatLevel;
@@ -123,26 +180,43 @@ export class EnemySwarm {
     return d;
   }
 
-  spawn(points: THREE.Vector3[]) {
-    points.forEach((p, i) => {
-      const kind: Kind = i % 2 === 1 ? "shooter" : "dasher";
-      const mesh = new THREE.Mesh(
-        kind === "shooter" ? this.geoS : this.geoD,
-        kind === "shooter" ? this.matS : this.matD,
-      );
-      mesh.position.copy(p);
+  spawn(points: THREE.Vector3[], factories: THREE.Vector3[]) {
+    const n = Math.max(1, Math.round(points.length * this.cfg.initialFrac));
+    for (let i = 0; i < n; i++) this.makeDrone(points[i]);
+    for (const f of factories) {
+      const mesh = new THREE.Mesh(this.geoF, this.matF);
+      mesh.position.copy(f);
       this.group.add(mesh);
-      this.drones.push({
+      this.factories.push({
         mesh,
-        home: p.clone(),
-        phase: i * 1.7,
-        hp: DRONE_HP,
-        kind,
-        cool: 1.5 + Math.random() * 2.5,
-        lungeT: 0,
-        lungeDir: new THREE.Vector3(),
+        pos: f.clone(),
+        hp: this.cfg.factoryHp,
+        cool: this.cfg.factoryInterval,
         dead: false,
       });
+    }
+  }
+
+  private makeDrone(p: THREE.Vector3) {
+    const kind: Kind = this.spawnCount % 2 === 1 ? "shooter" : "dasher";
+    this.spawnCount++;
+    const mesh = new THREE.Mesh(
+      kind === "shooter" ? this.geoS : this.geoD,
+      kind === "shooter" ? this.matS : this.matD,
+    );
+    mesh.position.copy(p);
+    this.group.add(mesh);
+    this.drones.push({
+      mesh,
+      origin: p.clone(),
+      home: p.clone(),
+      phase: this.spawnCount * 1.7,
+      hp: this.cfg.droneHp,
+      kind,
+      cool: 1.5 + Math.random() * 2.5,
+      lungeT: 0,
+      lungeDir: new THREE.Vector3(),
+      dead: false,
     });
   }
 
@@ -152,6 +226,24 @@ export class EnemySwarm {
     const bolts = [...weapons.bolts];
     const rockets = [...weapons.activeRockets];
     let threat = 0;
+
+    // Factories spew drones until destroyed.
+    for (const f of this.factories) {
+      if (f.dead) continue;
+      f.cool -= dt;
+      if (f.cool <= 0) {
+        f.cool = this.cfg.factoryInterval;
+        if (this.drones.length < this.cfg.maxDrones) {
+          this.tmp.set(
+            (Math.random() - 0.5) * 4,
+            (Math.random() - 0.5) * 4,
+            (Math.random() - 0.5) * 4,
+          );
+          this.makeDrone(f.pos.clone().add(this.tmp));
+        }
+      }
+      this.resolveFactoryHits(f, dt, bolts, rockets, weapons);
+    }
 
     for (const dr of this.drones) {
       if (dr.dead) continue;
@@ -165,7 +257,7 @@ export class EnemySwarm {
       if (dr.kind === "dasher") {
         this.updateDasher(dr, dt, dist, playerPos, damp);
       } else {
-        this.updateShooter(dr, dt, dist, playerPos, damp);
+        this.updateShooter(dr, dt, dist, damp);
         if (dr.cool <= 0 && dist < SHOOT_RANGE) {
           this.fireEnemyBolt(dr, playerPos);
           dr.cool = 1.4 + Math.random() * 1.8;
@@ -173,17 +265,26 @@ export class EnemySwarm {
         }
       }
 
+      // Containment: never let a drone leave its room.
+      clampTo(dr.home, dr.origin, LEASH);
+      clampTo(dr.mesh.position, dr.origin, MAXR);
+
       if (dist < DETECT) dr.mesh.lookAt(playerPos);
       else dr.mesh.rotation.y += dt * 1.2;
 
       this.resolveHits(dr, dt, bolts, rockets, weapons);
     }
 
-    // Single cleanup pass so we never splice mid-iteration.
     for (let i = this.drones.length - 1; i >= 0; i--) {
       if (this.drones[i].dead) {
         this.group.remove(this.drones[i].mesh);
         this.drones.splice(i, 1);
+      }
+    }
+    for (let i = this.factories.length - 1; i >= 0; i--) {
+      if (this.factories[i].dead) {
+        this.group.remove(this.factories[i].mesh);
+        this.factories.splice(i, 1);
       }
     }
 
@@ -209,24 +310,17 @@ export class EnemySwarm {
       dr.lungeDir.subVectors(playerPos, dr.mesh.position).normalize();
       dr.cool = 1.6 + Math.random() * 2.6;
     }
-    if (dist < DETECT && dist > MIN_PLAYER_DIST) {
+    if (dist < DETECT) {
       this.tmp.subVectors(playerPos, dr.home).normalize();
       dr.home.addScaledVector(this.tmp, CHASE_SPEED * dt);
     }
     this.hover(dr, damp);
   }
 
-  private updateShooter(
-    dr: Drone,
-    dt: number,
-    dist: number,
-    playerPos: THREE.Vector3,
-    damp: number,
-  ) {
-    // Keep a stand-off distance, sidling rather than charging.
-    if (dist < SHOOT_RANGE && dist < 55) {
-      this.tmp.subVectors(dr.home, playerPos).normalize();
-      dr.home.addScaledVector(this.tmp, CHASE_SPEED * 0.6 * dt);
+  private updateShooter(dr: Drone, dt: number, dist: number, damp: number) {
+    if (dist < 45) {
+      this.tmp.subVectors(dr.home, dr.origin).normalize();
+      dr.home.addScaledVector(this.tmp, CHASE_SPEED * 0.5 * dt);
     }
     this.hover(dr, damp);
   }
@@ -259,7 +353,7 @@ export class EnemySwarm {
       e.life -= dt;
       e.mesh.position.addScaledVector(e.vel, dt);
       if (e.mesh.position.distanceTo(playerPos) < SHIP_RADIUS + 0.6) {
-        this.pendingDamage += ENEMY_DMG;
+        this.pendingDamage += this.cfg.enemyDmg;
         this.group.remove(e.mesh);
         this.ebolts.splice(i, 1);
       } else if (e.life <= 0) {
@@ -297,13 +391,52 @@ export class EnemySwarm {
         const center = r.mesh.position.clone();
         weapons.detonateRocket(r);
         for (const o of this.drones) {
-          if (
-            !o.dead &&
-            o.mesh.position.distanceTo(center) < SPLASH_RADIUS
-          ) {
+          if (!o.dead && o.mesh.position.distanceTo(center) < SPLASH_RADIUS) {
             o.dead = true;
             this.explode(o.mesh.position, 1.4);
           }
+        }
+        for (const f of this.factories) {
+          if (!f.dead && f.pos.distanceTo(center) < SPLASH_RADIUS) {
+            f.hp -= 6;
+            if (f.hp <= 0) {
+              f.dead = true;
+              this.explode(f.pos, 2);
+            }
+          }
+        }
+        return;
+      }
+    }
+  }
+
+  private resolveFactoryHits(
+    f: Factory,
+    dt: number,
+    bolts: readonly Bolt[],
+    rockets: readonly Rocket[],
+    weapons: WeaponSystem,
+  ) {
+    for (const b of bolts) {
+      this.segB.copy(b.mesh.position);
+      this.segA.copy(b.mesh.position).addScaledVector(b.dir, -BOLT_SPEED * dt);
+      if (distToSeg(f.pos, this.segA, this.segB) < FACTORY_RADIUS) {
+        weapons.kill(b);
+        f.hp -= 1;
+        if (f.hp <= 0) {
+          f.dead = true;
+          this.explode(f.pos, 2.2);
+        }
+        return;
+      }
+    }
+    for (const r of rockets) {
+      if (f.pos.distanceTo(r.mesh.position) < FACTORY_RADIUS + 1.5) {
+        weapons.detonateRocket(r);
+        f.hp -= 6;
+        if (f.hp <= 0) {
+          f.dead = true;
+          this.explode(f.pos, 2.2);
         }
         return;
       }
@@ -338,6 +471,7 @@ export class EnemySwarm {
     });
     const mesh = new THREE.Mesh(this.boomGeo, mat);
     mesh.position.copy(p);
+    mesh.scale.setScalar(scale);
     const light = new THREE.PointLight(0xff7a3a, 90, 50, 2);
     light.position.copy(p);
     this.group.add(mesh);
@@ -348,13 +482,16 @@ export class EnemySwarm {
   dispose() {
     this.geoD.dispose();
     this.geoS.dispose();
+    this.geoF.dispose();
     this.matD.dispose();
     this.matS.dispose();
+    this.matF.dispose();
     this.eboltGeo.dispose();
     this.eboltMat.dispose();
     this.boomGeo.dispose();
     for (const bm of this.booms) bm.mat.dispose();
     this.drones = [];
+    this.factories = [];
     this.ebolts = [];
     this.booms = [];
   }

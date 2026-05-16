@@ -15,6 +15,9 @@ export class Game {
   readonly music = new MusicEngine();
   readonly sfx = new Sfx();
 
+  /** Selected difficulty 1..5 (persists across menu/play). */
+  difficulty = 2;
+
   private current: GameState | null = null;
   private clock = new THREE.Clock();
   private running = false;

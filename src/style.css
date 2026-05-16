@@ -88,6 +88,66 @@ canvas {
   outline: none;
 }
 
+.menu__diff-label {
+  font-size: 0.75rem;
+  letter-spacing: 0.35rem;
+  color: #7fa8c4;
+  margin-top: 0.5rem;
+}
+
+.menu__diff {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.menu__diff-btn {
+  appearance: none;
+  background: transparent;
+  border: 1px solid rgba(56, 240, 230, 0.5);
+  color: #7fa8c4;
+  font-family: inherit;
+  font-size: 0.8rem;
+  letter-spacing: 0.12rem;
+  padding: 0.4rem 0.9rem;
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
+}
+
+.menu__diff-btn:hover {
+  color: var(--cf-cyan);
+}
+
+.menu__diff-btn--on {
+  background: var(--cf-cyan);
+  color: var(--cf-bg);
+  border-color: var(--cf-cyan);
+  box-shadow: 0 0 16px rgba(56, 240, 230, 0.5);
+}
+
+.hud__flash {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  background: #fff;
+  mix-blend-mode: screen;
+}
+
+.hud__pickup {
+  position: absolute;
+  top: 38%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 1.6rem;
+  font-weight: 900;
+  letter-spacing: 0.3rem;
+  opacity: 0;
+  text-shadow: 0 0 16px currentColor;
+}
+
 .menu__controls {
   margin-top: 1.5rem;
   font-size: 0.8rem;

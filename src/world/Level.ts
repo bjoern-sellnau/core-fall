@@ -54,6 +54,11 @@ export class Level {
   readonly spawnQuaternion: THREE.Quaternion;
   readonly corePosition: THREE.Vector3;
   readonly enemySpawns: THREE.Vector3[] = [];
+  readonly factorySpawns: THREE.Vector3[] = [
+    new THREE.Vector3(-10, 5, -58),
+    new THREE.Vector3(40, -4, -118),
+    new THREE.Vector3(-12, 4, -186),
+  ];
   readonly pickupSpawns: THREE.Vector3[] = [
     new THREE.Vector3(0, 3, -32),
     new THREE.Vector3(7, 4, -58),

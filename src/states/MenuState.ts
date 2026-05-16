@@ -52,11 +52,21 @@ export class MenuState implements GameState {
     key.position.set(6, 4, 10);
     this.scene.add(key);
 
+    const names = ["ROOKIE", "PILOT", "ACE", "VETERAN", "INSANE"];
+    const diffBtns = names
+      .map(
+        (n, i) =>
+          `<button class="menu__diff-btn" data-d="${i + 1}">${i + 1} ${n}</button>`,
+      )
+      .join("");
+
     this.root = document.createElement("div");
     this.root.className = "menu";
     this.root.innerHTML = `
       <h1 class="menu__title">COREFALL</h1>
       <p class="menu__subtitle">DESCENT INTO THE CORE</p>
+      <div class="menu__diff-label">DIFFICULTY</div>
+      <div class="menu__diff">${diffBtns}</div>
       <div class="menu__buttons">
         <button class="menu__btn" id="cf-start">START MISSION</button>
       </div>
@@ -68,19 +78,45 @@ export class MenuState implements GameState {
     `;
     game.container.appendChild(this.root);
 
+    const diffButtons =
+      this.root.querySelectorAll<HTMLButtonElement>(".menu__diff-btn");
+    const paint = () => {
+      diffButtons.forEach((b) => {
+        const on = Number(b.dataset.d) === this.game.difficulty;
+        b.classList.toggle("menu__diff-btn--on", on);
+      });
+    };
+    diffButtons.forEach((b) => {
+      b.onclick = () => {
+        this.game.difficulty = Number(b.dataset.d);
+        paint();
+      };
+    });
+    paint();
+
     const start = () => {
       this.game.music.start();
       this.game.sfx.start();
+      this.game.music.setScene("game");
       this.game.setState(new PlayState());
     };
     this.root.querySelector<HTMLButtonElement>("#cf-start")!.onclick = start;
     this.onKey = (e: KeyboardEvent) => {
       if (e.code === "Enter") start();
     };
+    // Browsers need a gesture before audio: kick off menu music on the
+    // first interaction anywhere in the menu.
+    this.onPointer = () => {
+      this.game.music.start();
+      this.game.sfx.start();
+      this.game.music.setScene("menu");
+    };
     window.addEventListener("keydown", this.onKey);
+    window.addEventListener("pointerdown", this.onPointer, { once: true });
   }
 
   private onKey: (e: KeyboardEvent) => void = () => {};
+  private onPointer: () => void = () => {};
 
   update(dt: number) {
     this.core.rotation.y += dt * 0.4;
@@ -90,6 +126,7 @@ export class MenuState implements GameState {
 
   exit() {
     window.removeEventListener("keydown", this.onKey);
+    window.removeEventListener("pointerdown", this.onPointer);
     this.root.remove();
     this.scene.traverse((o) => {
       const m = o as THREE.Mesh;
