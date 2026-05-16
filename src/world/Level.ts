@@ -54,29 +54,18 @@ export class Level {
   readonly spawnQuaternion: THREE.Quaternion;
   readonly corePosition: THREE.Vector3;
   readonly enemySpawns: THREE.Vector3[] = [];
-  readonly factorySpawns: THREE.Vector3[] = [
-    new THREE.Vector3(-10, 5, -58),
-    new THREE.Vector3(40, -4, -118),
-    new THREE.Vector3(-12, 4, -186),
-  ];
-  readonly pickupSpawns: THREE.Vector3[] = [
-    new THREE.Vector3(0, 3, -32),
-    new THREE.Vector3(7, 4, -58),
-    new THREE.Vector3(46, 3, -118),
-    new THREE.Vector3(-6, 2, -118),
-    new THREE.Vector3(0, -3, -186),
-    new THREE.Vector3(0, -3, -214),
-    new THREE.Vector3(14, 6, -250),
-  ];
+  readonly factorySpawns: THREE.Vector3[] = [];
+  readonly pickupSpawns: THREE.Vector3[] = [];
 
   private reactor: THREE.Mesh;
   private reactorLight: THREE.PointLight;
   private elapsed = 0;
 
-  private static readonly CORE = new THREE.Vector3(0, -6, -250);
+  private static readonly CORE = new THREE.Vector3(0, -6, -436);
 
   constructor(world: RAPIER.World) {
-    // Layout: start room → corridors/rooms → side branch → reactor room.
+    // Long Descent-style mine with two unlit "dark" sectors and a
+    // side branch, ending in the reactor chamber.
     const boxes: Box[] = [
       box(0, 0, -8, 26, 16, 28, 14), // 0 start
       box(0, 0, -32, 9, 8, 26, 7), // 1 corridor
@@ -86,9 +75,15 @@ export class Level {
       box(24, 0, -118, 30, 8, 9, 7), // 5 branch corridor
       box(46, 0, -118, 22, 16, 24, 14, true), // 6 branch room
       box(0, -6, -153, 9, 9, 42, 7), // 7 descending corridor
-      box(0, -6, -186, 34, 16, 30, 16), // 8 lower room
-      box(0, -6, -214, 10, 10, 30, 7), // 9 corridor
-      box(0, -6, -250, 46, 30, 46, 0, true), // 10 reactor room
+      box(0, -6, -188, 34, 18, 32, 0), // 8 DARK room
+      box(0, -6, -216, 9, 9, 28, 5), // 9 corridor
+      box(0, -10, -244, 32, 16, 30, 14), // 10 room
+      box(0, -18, -274, 10, 9, 34, 6), // 11 drop corridor
+      box(0, -22, -310, 40, 16, 40, 0), // 12 DARK hall
+      box(0, -22, -342, 10, 10, 28, 6), // 13 corridor
+      box(0, -18, -370, 30, 18, 30, 15), // 14 room
+      box(0, -12, -400, 10, 10, 36, 6), // 15 corridor
+      box(0, -6, -436, 48, 32, 48, 0, true), // 16 reactor room
     ];
 
     const verts: number[] = [];
@@ -165,6 +160,17 @@ export class Level {
       if (bi !== 0) {
         this.enemySpawns.push(new THREE.Vector3(cx, cy, cz));
       }
+    }
+
+    const center = (i: number) =>
+      new THREE.Vector3(
+        (boxes[i].min[0] + boxes[i].max[0]) / 2,
+        (boxes[i].min[1] + boxes[i].max[1]) / 2,
+        (boxes[i].min[2] + boxes[i].max[2]) / 2,
+      );
+    for (const i of [2, 6, 10, 14]) this.factorySpawns.push(center(i));
+    for (const i of [1, 3, 4, 8, 11, 13, 15]) {
+      this.pickupSpawns.push(center(i).add(new THREE.Vector3(0, 2, 0)));
     }
 
     const positions = new Float32Array(verts);

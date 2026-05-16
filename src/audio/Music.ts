@@ -48,6 +48,16 @@ const M_B: Bar = {
   lead: [72, null, null, null, null, null, 67, null, null, null, null, null, 71, null, null, null],
 };
 
+// --- DEATH: very slow, dark, mournful ---
+const D_A: Bar = {
+  bass: [21, null, null, null, null, null, null, null, 24, null, null, null, null, null, null, null],
+  lead: [60, null, null, null, null, null, null, null, 63, null, null, null, null, null, null, null],
+};
+const D_B: Bar = {
+  bass: [19, null, null, null, null, null, null, null, 16, null, null, null, null, null, null, null],
+  lead: [59, null, null, null, null, null, 56, null, null, null, null, null, 53, null, null, null],
+};
+
 const GAME: SceneCfg = {
   bpm: 138,
   bars: [G_A, G_B, G_C, G_D],
@@ -61,6 +71,14 @@ const MENU: SceneCfg = {
   bars: [M_A, M_B],
   arr: [0, 1, 0, 1],
   gain: 0.2,
+  drums: false,
+  pad: true,
+};
+const DEATH: SceneCfg = {
+  bpm: 52,
+  bars: [D_A, D_B],
+  arr: [0, 1],
+  gain: 0.22,
   drums: false,
   pad: true,
 };
@@ -102,14 +120,15 @@ export class MusicEngine {
     }
   }
 
-  /** Switch between the menu and game tracks. */
-  setScene(scene: "menu" | "game") {
-    const next = scene === "game" ? GAME : MENU;
+  /** Switch between the menu, game and death tracks. */
+  setScene(scene: "menu" | "game" | "death") {
+    const next =
+      scene === "game" ? GAME : scene === "death" ? DEATH : MENU;
     if (next === this.cfg) return;
     this.cfg = next;
     this.step = 0;
     this.barPos = 0;
-    if (scene === "menu") this.intensityTarget = 0;
+    if (scene !== "game") this.intensityTarget = 0;
   }
 
   setIntensity(x: number) {

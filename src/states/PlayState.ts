@@ -201,6 +201,7 @@ export class PlayState implements GameState {
   private die() {
     this.lives -= 1;
     this.game.sfx.explosion(2.4);
+    this.game.music.setScene("death");
     this.deathPos.copy(this.ship.position);
     this.deathFx.trigger(this.deathPos, {
       laser: this.weapons.laserLevel,
@@ -222,6 +223,7 @@ export class PlayState implements GameState {
 
   private respawn() {
     this.deathFx.reset();
+    this.game.music.setScene("game");
     this.ship.respawn(this.level.spawnPosition, this.level.spawnQuaternion);
     this.ship.syncCamera(this.camera);
     this.hull = MAX_HULL;
@@ -356,17 +358,20 @@ export class PlayState implements GameState {
 
   private updateDeath(dt: number) {
     this.pause.classList.add("hidden");
-    this.level.update(dt);
-    this.deathFx.update(dt);
     this.game.music.setIntensity(0);
+
+    // Slow-motion spectacle; real time still drives the SPACE prompt.
+    const sdt = dt * 0.3;
+    this.level.update(sdt);
+    this.deathFx.update(sdt);
 
     // Cinematic third-person orbit around the wreck.
     this.deathTimer += dt;
-    const ang = this.deathTimer * 0.5;
+    const ang = this.deathTimer * 0.18;
     this.camera.position.set(
-      this.deathPos.x + Math.cos(ang) * 16,
+      this.deathPos.x + Math.cos(ang) * 17,
       this.deathPos.y + 6,
-      this.deathPos.z + Math.sin(ang) * 16,
+      this.deathPos.z + Math.sin(ang) * 17,
     );
     this.camera.lookAt(this.deathPos);
 

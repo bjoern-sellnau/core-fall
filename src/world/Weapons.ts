@@ -59,11 +59,21 @@ export class WeaponSystem {
   private readonly boomGeo = new THREE.SphereGeometry(0.5, 10, 10);
   private readonly zAxis = new THREE.Vector3(0, 0, 1);
 
+  // Pooled lights so projectiles illuminate dark rooms as they fly.
+  private readonly lightPool: THREE.PointLight[] = [];
+
   constructor(
     private readonly world: RAPIER.World,
     private readonly excludeBody: RAPIER.RigidBody,
     private readonly sfx: Sfx,
-  ) {}
+  ) {
+    for (let i = 0; i < 10; i++) {
+      const l = new THREE.PointLight(0x66f0ff, 0, 34, 1.8);
+      l.visible = false;
+      this.group.add(l);
+      this.lightPool.push(l);
+    }
+  }
 
   get energy01(): number {
     return this.energy / MAX_ENERGY;
@@ -221,6 +231,43 @@ export class WeaponSystem {
         bm.mat.dispose();
         this.booms.splice(i, 1);
       }
+    }
+
+    this.updateLights();
+  }
+
+  /** Park pool lights on the newest projectiles + active blasts. */
+  private updateLights() {
+    let n = 0;
+    for (const r of this.rocketList) {
+      if (n >= this.lightPool.length) break;
+      const l = this.lightPool[n++];
+      l.visible = true;
+      l.color.setHex(0xffae50);
+      l.intensity = 26;
+      l.distance = 40;
+      l.position.copy(r.mesh.position);
+    }
+    for (let i = this.booms.length - 1; i >= 0 && n < this.lightPool.length; i--) {
+      const l = this.lightPool[n++];
+      l.visible = true;
+      l.color.setHex(0xbfefff);
+      l.intensity = 40;
+      l.distance = 46;
+      l.position.copy(this.booms[i].mesh.position);
+    }
+    for (const b of this.boltList) {
+      if (n >= this.lightPool.length) break;
+      const l = this.lightPool[n++];
+      l.visible = true;
+      l.color.setHex(0x66f0ff);
+      l.intensity = 16;
+      l.distance = 30;
+      l.position.copy(b.mesh.position);
+    }
+    for (; n < this.lightPool.length; n++) {
+      this.lightPool[n].visible = false;
+      this.lightPool[n].intensity = 0;
     }
   }
 
