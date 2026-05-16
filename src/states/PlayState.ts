@@ -6,6 +6,7 @@ import { PhysicsWorld } from "../physics/Physics";
 import { Level } from "../world/Level";
 import { Ship } from "../world/Ship";
 import { WeaponSystem } from "../world/Weapons";
+import { EnemySwarm } from "../world/Enemies";
 
 /** The actual flying: test level + 6DOF ship + physics. */
 export class PlayState implements GameState {
@@ -17,12 +18,14 @@ export class PlayState implements GameState {
   private level!: Level;
   private ship!: Ship;
   private weapons!: WeaponSystem;
+  private enemies!: EnemySwarm;
 
   private root!: HTMLElement;
   private pause!: HTMLElement;
   private speedEl!: HTMLElement;
   private coreEl!: HTMLElement;
   private energyEl!: HTMLElement;
+  private enemyEl!: HTMLElement;
   private wantMenu = false;
   private musicKeyDown = false;
 
@@ -53,6 +56,10 @@ export class PlayState implements GameState {
     this.weapons = new WeaponSystem(this.physics.world, this.ship.rigidBody);
     this.scene.add(this.weapons.group);
 
+    this.enemies = new EnemySwarm(this.game.sfx);
+    this.enemies.spawn(this.level.enemySpawns);
+    this.scene.add(this.enemies.group);
+
     // --- HUD ---
     this.root = document.createElement("div");
     this.root.className = "hud";
@@ -61,8 +68,9 @@ export class PlayState implements GameState {
       <div class="hud__hint">CLICK TO FLY &middot; LMB FIRE &middot; ESC RELEASE MOUSE</div>
       <div class="hud__readout">
         COREFALL // TEST RUN<br />
-        SPEED <span id="cf-speed">0</span> u/s<br />
-        CORE&nbsp; <span id="cf-core">0</span> m
+        SPEED&nbsp;&nbsp;&nbsp; <span id="cf-speed">0</span> u/s<br />
+        CORE&nbsp;&nbsp;&nbsp;&nbsp; <span id="cf-core">0</span> m<br />
+        HOSTILES <span id="cf-enemies">0</span>
       </div>
       <div class="hud__weapon">
         <div class="hud__weapon-name">LASER</div>
@@ -73,6 +81,7 @@ export class PlayState implements GameState {
     this.speedEl = this.root.querySelector<HTMLElement>("#cf-speed")!;
     this.coreEl = this.root.querySelector<HTMLElement>("#cf-core")!;
     this.energyEl = this.root.querySelector<HTMLElement>("#cf-energy")!;
+    this.enemyEl = this.root.querySelector<HTMLElement>("#cf-enemies")!;
 
     this.pause = document.createElement("div");
     this.pause.className = "menu";
@@ -92,6 +101,7 @@ export class PlayState implements GameState {
 
     this.onClick = () => {
       this.game.music.start();
+      this.game.sfx.start();
       if (!this.game.input.isLocked) this.game.input.requestPointerLock();
     };
     game.renderer.domElement.addEventListener("click", this.onClick);
@@ -127,14 +137,20 @@ export class PlayState implements GameState {
       if (this.game.input.isMouseDown(0)) {
         this.tmpFwd.set(0, 0, -1).applyQuaternion(this.ship.quaternion);
         this.tmpRight.set(1, 0, 0).applyQuaternion(this.ship.quaternion);
-        this.weapons.tryFire(this.ship.position, this.tmpFwd, this.tmpRight);
+        if (
+          this.weapons.tryFire(this.ship.position, this.tmpFwd, this.tmpRight)
+        ) {
+          this.game.sfx.laser();
+        }
       }
       this.weapons.update(dt);
+      this.enemies.update(dt, this.ship.position, this.weapons);
 
       this.speedEl.textContent = this.ship.speed.toFixed(0);
       this.coreEl.textContent = this.ship.position
         .distanceTo(this.level.corePosition)
         .toFixed(0);
+      this.enemyEl.textContent = this.enemies.count.toFixed(0);
       const e = this.weapons.energy01;
       this.energyEl.style.width = `${(e * 100).toFixed(0)}%`;
       this.energyEl.classList.toggle("hud__energy-fill--low", e < 0.25);
@@ -148,6 +164,7 @@ export class PlayState implements GameState {
     this.game.renderer.domElement.removeEventListener("click", this.onClick);
     this.root.remove();
     this.pause.remove();
+    this.enemies.dispose();
     this.weapons.dispose();
     this.level.dispose();
     this.physics.dispose();

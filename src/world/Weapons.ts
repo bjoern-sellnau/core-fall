@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { RAPIER } from "../physics/Physics";
 
-const BOLT_SPEED = 150; // units / s
+export const BOLT_SPEED = 150; // units / s
 const BOLT_LIFETIME = 2.4; // s
 const FIRE_INTERVAL = 0.13; // s between volleys
 const MAX_ENERGY = 100;
@@ -10,7 +10,7 @@ const RECHARGE = 30; // energy / s
 const CANNON_SPREAD = 0.7; // lateral offset of each cannon
 const MUZZLE_FORWARD = 2.2; // spawn ahead of the ship
 
-interface Bolt {
+export interface Bolt {
   mesh: THREE.Mesh;
   dir: THREE.Vector3;
   life: number;
@@ -30,7 +30,7 @@ interface Impact {
 export class WeaponSystem {
   readonly group = new THREE.Group();
 
-  private bolts: Bolt[] = [];
+  private boltList: Bolt[] = [];
   private impacts: Impact[] = [];
   private cooldown = 0;
   private energy = MAX_ENERGY;
@@ -49,9 +49,27 @@ export class WeaponSystem {
     return this.energy / MAX_ENERGY;
   }
 
-  /** Called every frame while the fire button is held; self rate-limits. */
-  tryFire(pos: THREE.Vector3, fwd: THREE.Vector3, right: THREE.Vector3) {
-    if (this.cooldown > 0 || this.energy < SHOT_COST) return;
+  /** Live bolts, for external hit-testing (enemies). */
+  get bolts(): readonly Bolt[] {
+    return this.boltList;
+  }
+
+  /** Remove a bolt that hit something external. */
+  kill(b: Bolt) {
+    const i = this.boltList.indexOf(b);
+    if (i >= 0) this.removeBolt(i);
+  }
+
+  /**
+   * Called every frame while the fire button is held; self rate-limits.
+   * Returns true on the frame a volley actually leaves the cannons.
+   */
+  tryFire(
+    pos: THREE.Vector3,
+    fwd: THREE.Vector3,
+    right: THREE.Vector3,
+  ): boolean {
+    if (this.cooldown > 0 || this.energy < SHOT_COST) return false;
     this.cooldown = FIRE_INTERVAL;
     this.energy -= SHOT_COST;
 
@@ -65,16 +83,17 @@ export class WeaponSystem {
       mesh.position.copy(origin);
       mesh.quaternion.copy(q);
       this.group.add(mesh);
-      this.bolts.push({ mesh, dir: fwd.clone(), life: BOLT_LIFETIME });
+      this.boltList.push({ mesh, dir: fwd.clone(), life: BOLT_LIFETIME });
     }
+    return true;
   }
 
   update(dt: number) {
     this.cooldown = Math.max(0, this.cooldown - dt);
     this.energy = Math.min(MAX_ENERGY, this.energy + RECHARGE * dt);
 
-    for (let i = this.bolts.length - 1; i >= 0; i--) {
-      const b = this.bolts[i];
+    for (let i = this.boltList.length - 1; i >= 0; i--) {
+      const b = this.boltList[i];
       b.life -= dt;
 
       const step = BOLT_SPEED * dt;
@@ -117,8 +136,8 @@ export class WeaponSystem {
   }
 
   private removeBolt(i: number) {
-    this.group.remove(this.bolts[i].mesh);
-    this.bolts.splice(i, 1);
+    this.group.remove(this.boltList[i].mesh);
+    this.boltList.splice(i, 1);
   }
 
   private spawnImpact(p: THREE.Vector3) {
@@ -140,7 +159,7 @@ export class WeaponSystem {
     this.boltMat.dispose();
     this.impactGeo.dispose();
     for (const im of this.impacts) im.mat.dispose();
-    this.bolts = [];
+    this.boltList = [];
     this.impacts = [];
   }
 }

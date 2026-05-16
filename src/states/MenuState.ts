@@ -70,6 +70,7 @@ export class MenuState implements GameState {
 
     const start = () => {
       this.game.music.start();
+      this.game.sfx.start();
       this.game.setState(new PlayState());
     };
     this.root.querySelector<HTMLButtonElement>("#cf-start")!.onclick = start;
