@@ -148,6 +148,33 @@ canvas {
   text-shadow: 0 0 16px currentColor;
 }
 
+.hud__reactor {
+  position: absolute;
+  top: 3.4rem;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 280px;
+  text-align: center;
+}
+
+.hud__bar-fill--reactor {
+  background: #ff5a3a;
+  box-shadow: 0 0 10px rgba(255, 90, 58, 0.8);
+}
+
+.hud__sd {
+  position: absolute;
+  top: 6rem;
+  left: 50%;
+  transform: translateX(-50%);
+  color: #ff3a3a;
+  font-size: clamp(1rem, 2.6vw, 1.5rem);
+  font-weight: 900;
+  letter-spacing: 0.25rem;
+  text-shadow: 0 0 14px rgba(255, 58, 58, 0.9);
+  animation: cf-blink 0.7s steps(2, start) infinite;
+}
+
 .hud__map {
   position: absolute;
   inset: 0;

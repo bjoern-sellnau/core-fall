@@ -76,7 +76,13 @@ export class PlayState implements GameState {
   private wantMenu = false;
   private musicKeyDown = false;
 
-  private phase: "play" | "dead" | "gameover" = "play";
+  private phase: "play" | "dead" | "gameover" | "won" = "play";
+  private selfDestruct = false;
+  private escapeTime = 0;
+  private winTimer = 0;
+  private reactorEl!: HTMLElement;
+  private reactorWrapEl!: HTMLElement;
+  private sdEl!: HTMLElement;
   private lives = START_LIVES;
   private deathFx!: DeathFx;
   private deathTimer = 0;
@@ -135,7 +141,11 @@ export class PlayState implements GameState {
       this.game.sfx,
       difficultyConfig(this.game.difficulty),
     );
-    this.enemies.spawn(this.level.enemySpawns, this.level.factorySpawns);
+    this.enemies.spawn(
+      this.level.enemySpawns,
+      this.level.factorySpawns,
+      this.level.corePosition,
+    );
     this.scene.add(this.enemies.group);
 
     this.pickups = new PickupField(this.game.sfx);
@@ -155,6 +165,11 @@ export class PlayState implements GameState {
       <div class="hud__flash" id="cf-flash"></div>
       <div class="hud__pickup" id="cf-pickup"></div>
       <div class="hud__crosshair"></div>
+      <div class="hud__reactor hidden" id="cf-reactor-wrap">
+        <div class="hud__bar-label">REACTOR</div>
+        <div class="hud__bar"><div class="hud__bar-fill hud__bar-fill--reactor" id="cf-reactor"></div></div>
+      </div>
+      <div class="hud__sd hidden" id="cf-sd"></div>
       <div class="hud__hint">LMB FIRE &middot; 1-5/0 WEAPON &middot; V VIEW &middot; M MAP &middot; R RESET</div>
       <div class="hud__readout">
         COREFALL // TEST RUN<br />
@@ -186,6 +201,10 @@ export class PlayState implements GameState {
     this.rktEl = this.root.querySelector<HTMLElement>("#cf-wpn")!;
     this.laserEl = this.root.querySelector<HTMLElement>("#cf-wammo")!;
     this.factoryEl = this.root.querySelector<HTMLElement>("#cf-factories")!;
+    this.reactorEl = this.root.querySelector<HTMLElement>("#cf-reactor")!;
+    this.reactorWrapEl =
+      this.root.querySelector<HTMLElement>("#cf-reactor-wrap")!;
+    this.sdEl = this.root.querySelector<HTMLElement>("#cf-sd")!;
     this.flashEl = this.root.querySelector<HTMLElement>("#cf-flash")!;
     this.pickupEl = this.root.querySelector<HTMLElement>("#cf-pickup")!;
     this.livesEl = this.root.querySelector<HTMLElement>("#cf-lives")!;
@@ -303,6 +322,11 @@ export class PlayState implements GameState {
       return;
     }
 
+    if (this.phase === "won") {
+      this.updateWin(dt);
+      this.game.renderer.render(this.scene, this.camera);
+      return;
+    }
     if (this.phase !== "play") {
       this.updateDeath(dt);
       this.game.renderer.render(this.scene, this.camera);
@@ -373,6 +397,44 @@ export class PlayState implements GameState {
       this.weapons.update(dt);
       this.enemies.update(dt, this.ship.position, this.weapons);
       this.game.music.setIntensity(this.enemies.threat);
+
+      // Reactor health bar + self-destruct / escape logic.
+      if (this.enemies.reactorAlive && this.enemies.reactorHp01 < 1) {
+        this.reactorWrapEl.classList.remove("hidden");
+        this.reactorEl.style.width = `${(this.enemies.reactorHp01 * 100).toFixed(0)}%`;
+      }
+      if (this.enemies.consumeReactorKilled()) {
+        this.selfDestruct = true;
+        this.escapeTime = 55;
+        this.level.destroyReactor();
+        this.doors.setEscape(true);
+        this.game.sfx.explosion(3);
+        this.reactorWrapEl.classList.add("hidden");
+        this.sdEl.classList.remove("hidden");
+      }
+      if (this.selfDestruct) {
+        this.escapeTime -= dt;
+        const t = Math.max(0, this.escapeTime);
+        this.sdEl.textContent = `!! SELF DESTRUCT !!  T-${t.toFixed(0)}s  —  REACH THE EXIT`;
+        if (this.ship.position.distanceTo(this.level.exitZone) < 22) {
+          this.selfDestruct = false;
+          this.sdEl.classList.add("hidden");
+          this.phase = "won";
+          this.winTimer = 0;
+          this.spaceArmed = false;
+          this.root.classList.add("hidden");
+          this.game.input.exitPointerLock();
+          this.game.music.setScene("menu");
+          return;
+        }
+        if (this.escapeTime <= 0) {
+          this.selfDestruct = false;
+          this.sdEl.classList.add("hidden");
+          this.hull = 0;
+          this.die();
+          return;
+        }
+      }
 
       // Pickups.
       for (const k of this.pickups.update(dt, this.ship.position)) {
@@ -499,6 +561,41 @@ export class PlayState implements GameState {
       this.ship.position.y + fwd.y * 6,
       this.ship.position.z + fwd.z * 6,
     );
+  }
+
+  private updateWin(dt: number) {
+    this.pause.classList.add("hidden");
+    this.winTimer += dt;
+
+    // Blast out through the exit corridor into open space.
+    this.tmpFwd.set(0, 0, -1).applyQuaternion(this.ship.quaternion);
+    const speed = 40 + this.winTimer * 30;
+    this.ship.position.addScaledVector(this.tmpFwd, speed * dt);
+    const up = this.tmpRight.set(0, 1, 0).applyQuaternion(this.ship.quaternion);
+    this.camera.position
+      .copy(this.ship.position)
+      .addScaledVector(this.tmpFwd, -12)
+      .addScaledVector(up, 4);
+    this.camera.lookAt(this.ship.position);
+    this.level.update(dt * 0.3, this.ship.position);
+
+    // Whiteout as the mine detonates behind you.
+    const flash = Math.min(0.85, Math.max(0, (this.winTimer - 2) / 2));
+    this.flashEl.style.background = "#cfefff";
+    this.flashEl.style.opacity = `${flash}`;
+    if (this.winTimer > 1.6 && this.winTimer < 4 && Math.random() < 0.25) {
+      this.game.sfx.explosion(2.5);
+    }
+
+    if (this.winTimer > 4) {
+      this.deathTitleEl.textContent = "MISSION COMPLETE";
+      this.deathTitleEl.style.color = "#5dff8a";
+      this.deathSubEl.textContent = "YOU ESCAPED — PRESS SPACE FOR MENU";
+      this.deathEl.classList.remove("hidden");
+      const sp = this.game.input.isDown("Space");
+      if (!sp) this.spaceArmed = true;
+      if (this.spaceArmed && sp) this.game.setState(new MenuState());
+    }
   }
 
   private updateDeath(dt: number) {

@@ -86,6 +86,13 @@ export class Doors {
     }
   }
 
+  private escape = false;
+
+  /** Self-destruct triggered: the sealed exit door opens. */
+  setEscape(on: boolean) {
+    this.escape = on;
+  }
+
   update(dt: number, playerPos: THREE.Vector3, keys: KeyRing) {
     for (const d of this.doors) {
       const c = d.def.color;
@@ -93,7 +100,8 @@ export class Doors {
         c === "normal" ||
         (c === "blue" && keys.blue) ||
         (c === "red" && keys.red) ||
-        (c === "yellow" && keys.yellow);
+        (c === "yellow" && keys.yellow) ||
+        (c === "exit" && this.escape);
       const near =
         playerPos.distanceTo(d.mesh.position) < OPEN_DIST + d.def.size[1];
       const target = unlocked && near ? 1 : 0;

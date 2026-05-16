@@ -54,6 +54,7 @@ export class Level {
   readonly spawnPosition: THREE.Vector3;
   readonly spawnQuaternion: THREE.Quaternion;
   readonly corePosition: THREE.Vector3;
+  readonly exitZone = new THREE.Vector3(0, -6, -508);
   readonly mapBoxes: { x0: number; z0: number; x1: number; z1: number }[] = [];
   readonly enemySpawns: THREE.Vector3[] = [];
   readonly factorySpawns: THREE.Vector3[] = [];
@@ -63,7 +64,7 @@ export class Level {
     { pos: [0, 0, -26], size: [11, 10, 1.6], color: "normal" },
     { pos: [0, 0, -80], size: [11, 11, 1.6], color: "blue" },
     { pos: [0, -6, -210], size: [11, 11, 1.6], color: "yellow" },
-    { pos: [0, -22, -336], size: [12, 12, 1.6], color: "red" },
+    { pos: [0, -22, -330], size: [12, 12, 1.8], color: "red" },
     { pos: [0, -8, -450], size: [12, 14, 1.6], color: "normal" },
     { pos: [0, -6, -494], size: [22, 18, 1.8], color: "exit" },
   ];
@@ -116,6 +117,9 @@ export class Level {
       box(-48, -22, -310, 24, 16, 22, 12), // 26 -X branch room
       box(0, 16, -370, 14, 24, 14, 9), // 27 vertical shaft (off 14)
       box(20, -10, -430, 26, 16, 22, 13), // 28 +X branch room (off 18)
+      box(24, 0, -58, 28, 9, 9, 7), // 29 +X branch corridor (off 2)
+      box(46, 0, -58, 22, 16, 22, 12), // 30 +X branch room
+      box(0, 12, -188, 14, 20, 14, 8), // 31 vertical alcove (off 8)
     ];
 
     const merged: number[] = [];
@@ -253,7 +257,7 @@ export class Level {
         (boxes[i].min[2] + boxes[i].max[2]) / 2,
       );
     for (const i of [2, 6, 10, 14, 17]) this.factorySpawns.push(center(i));
-    for (const i of [1, 3, 5, 11, 13, 15, 18, 21, 22, 23, 26, 27, 28]) {
+    for (const i of [1, 3, 5, 11, 13, 15, 18, 21, 22, 23, 26, 27, 28, 30, 31]) {
       this.pickupSpawns.push(center(i).add(new THREE.Vector3(0, 2, 0)));
     }
     // Access keys, each on the main path before its locked door.
@@ -321,12 +325,14 @@ export class Level {
 
   update(dt: number, playerPos: THREE.Vector3) {
     this.elapsed += dt;
-    this.reactor.rotation.y += dt * 0.6;
-    this.reactor.rotation.x += dt * 0.25;
-    const pulse = 1 + Math.sin(this.elapsed * 3) * 0.25;
-    this.reactorLight.intensity = 150 * pulse;
-    (this.reactor.material as THREE.MeshStandardMaterial).emissiveIntensity =
-      1.2 + pulse * 0.4;
+    if (this.reactor.visible) {
+      this.reactor.rotation.y += dt * 0.6;
+      this.reactor.rotation.x += dt * 0.25;
+      const pulse = 1 + Math.sin(this.elapsed * 3) * 0.25;
+      this.reactorLight.intensity = 150 * pulse;
+      (this.reactor.material as THREE.MeshStandardMaterial).emissiveIntensity =
+        1.2 + pulse * 0.4;
+    }
 
     // Sector culling: only draw rooms near the player.
     for (const s of this.sectors) {
@@ -351,6 +357,13 @@ export class Level {
         l.intensity = 0;
       }
     }
+  }
+
+  /** Called when the player blows the reactor. */
+  destroyReactor() {
+    this.reactor.visible = false;
+    this.reactorLight.intensity = 0;
+    this.reactorLight.visible = false;
   }
 
   dispose() {

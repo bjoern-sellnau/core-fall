@@ -120,6 +120,13 @@ export class EnemySwarm {
   private ebolts: EBolt[] = [];
   private booms: Boom[] = [];
   private elapsed = 0;
+
+  private reactorPos = new THREE.Vector3();
+  private reactorHp = 0;
+  private reactorMaxHp = 1;
+  private reactorAliveFlag = false;
+  private reactorCool = 2;
+  private reactorKilled = false;
   private threatLevel = 0;
   private pendingDamage = 0;
   private spawnCount = 0;
@@ -178,7 +185,24 @@ export class EnemySwarm {
     return d;
   }
 
-  spawn(points: THREE.Vector3[], factories: THREE.Vector3[]) {
+  get reactorAlive(): boolean {
+    return this.reactorAliveFlag;
+  }
+  get reactorHp01(): number {
+    return Math.max(0, this.reactorHp / this.reactorMaxHp);
+  }
+  /** True only on the frame the reactor is destroyed. */
+  consumeReactorKilled(): boolean {
+    const k = this.reactorKilled;
+    this.reactorKilled = false;
+    return k;
+  }
+
+  spawn(
+    points: THREE.Vector3[],
+    factories: THREE.Vector3[],
+    reactorPos: THREE.Vector3,
+  ) {
     const n = Math.max(1, Math.round(points.length * this.cfg.initialFrac));
     for (let i = 0; i < n; i++) this.makeDrone(points[i]);
     for (const f of factories) {
@@ -193,6 +217,10 @@ export class EnemySwarm {
         dead: false,
       });
     }
+    this.reactorPos.copy(reactorPos);
+    this.reactorMaxHp = this.cfg.factoryHp * 9;
+    this.reactorHp = this.reactorMaxHp;
+    this.reactorAliveFlag = true;
   }
 
   private makeDrone(p: THREE.Vector3) {
@@ -224,6 +252,50 @@ export class EnemySwarm {
     const bolts = [...weapons.bolts];
     const rockets = [...weapons.activeRockets];
     let threat = 0;
+
+    // The reactor: fires at the player, takes weapon damage.
+    if (this.reactorAliveFlag) {
+      this.reactorCool -= dt;
+      const rdist = this.reactorPos.distanceTo(playerPos);
+      if (
+        this.reactorCool <= 0 &&
+        rdist < 130 &&
+        !this.blocked(this.reactorPos, playerPos)
+      ) {
+        this.spawnEBolt(this.reactorPos, playerPos);
+        this.spawnEBolt(this.reactorPos, playerPos);
+        this.reactorCool = 0.9 + Math.random() * 0.7;
+        threat += 0.8;
+      }
+      for (const b of bolts) {
+        this.segB.copy(b.mesh.position);
+        this.segA
+          .copy(b.mesh.position)
+          .addScaledVector(b.dir, -b.speed * dt);
+        if (distToSeg(this.reactorPos, this.segA, this.segB) < 7.5) {
+          weapons.kill(b);
+          this.reactorHp -= b.damage;
+        }
+      }
+      for (const r of rockets) {
+        if (this.reactorPos.distanceTo(r.mesh.position) < 9) {
+          weapons.detonateRocket(r);
+          this.reactorHp -= 8;
+        }
+      }
+      if (this.reactorHp <= 0) {
+        this.reactorAliveFlag = false;
+        this.reactorKilled = true;
+        for (let i = 0; i < 6; i++) {
+          this.tmp.set(
+            (Math.random() - 0.5) * 16,
+            (Math.random() - 0.5) * 16,
+            (Math.random() - 0.5) * 16,
+          );
+          this.explode(this.reactorPos.clone().add(this.tmp), 2.6);
+        }
+      }
+    }
 
     // Factories spew drones until destroyed.
     for (const f of this.factories) {
@@ -352,10 +424,14 @@ export class EnemySwarm {
   }
 
   private fireEnemyBolt(dr: Drone, playerPos: THREE.Vector3) {
+    this.spawnEBolt(dr.mesh.position, playerPos);
+  }
+
+  private spawnEBolt(from: THREE.Vector3, playerPos: THREE.Vector3) {
     const mesh = new THREE.Mesh(this.eboltGeo, this.eboltMat);
-    mesh.position.copy(dr.mesh.position);
+    mesh.position.copy(from);
     const vel = new THREE.Vector3()
-      .subVectors(playerPos, dr.mesh.position)
+      .subVectors(playerPos, from)
       .normalize()
       .multiplyScalar(EBOLT_SPEED);
     this.group.add(mesh);
