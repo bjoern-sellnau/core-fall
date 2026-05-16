@@ -8,6 +8,7 @@ import { Ship } from "../world/Ship";
 import { WeaponSystem } from "../world/Weapons";
 import { EnemySwarm, difficultyConfig } from "../world/Enemies";
 import { PickupField, type PickupKind } from "../world/Pickups";
+import { DeathFx } from "../world/DeathFx";
 
 const PICKUP_INFO: Record<PickupKind, { css: string; label: string }> = {
   health: { css: "#44ff88", label: "HULL +35" },
@@ -23,6 +24,8 @@ const SHIELD_DELAY = 4; // s after a hit before shield regenerates
 const INVULN = 2; // s of invulnerability after respawn
 const HEALTH_PICKUP = 35;
 const ROCKET_PICKUP = 6;
+const START_LIVES = 5;
+const DEATH_MIN = 1.2; // s before SPACE is accepted on the death screen
 
 /** The actual flying: test level + 6DOF ship + physics. */
 export class PlayState implements GameState {
@@ -60,6 +63,17 @@ export class PlayState implements GameState {
   private wantMenu = false;
   private musicKeyDown = false;
 
+  private phase: "play" | "dead" | "gameover" = "play";
+  private lives = START_LIVES;
+  private deathFx!: DeathFx;
+  private deathTimer = 0;
+  private spaceArmed = false;
+  private readonly deathPos = new THREE.Vector3();
+  private livesEl!: HTMLElement;
+  private deathEl!: HTMLElement;
+  private deathTitleEl!: HTMLElement;
+  private deathSubEl!: HTMLElement;
+
   private readonly tmpFwd = new THREE.Vector3();
   private readonly tmpRight = new THREE.Vector3();
 
@@ -92,6 +106,7 @@ export class PlayState implements GameState {
     this.scene.add(this.weapons.group);
 
     this.enemies = new EnemySwarm(
+      this.physics.world,
       this.game.sfx,
       difficultyConfig(this.game.difficulty),
     );
@@ -101,6 +116,9 @@ export class PlayState implements GameState {
     this.pickups = new PickupField(this.game.sfx);
     this.pickups.spawn(this.level.pickupSpawns);
     this.scene.add(this.pickups.group);
+
+    this.deathFx = new DeathFx();
+    this.scene.add(this.deathFx.group);
 
     // --- HUD ---
     this.root = document.createElement("div");
@@ -115,7 +133,8 @@ export class PlayState implements GameState {
         SPEED&nbsp;&nbsp;&nbsp;&nbsp; <span id="cf-speed">0</span> u/s<br />
         CORE&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <span id="cf-core">0</span> m<br />
         HOSTILES&nbsp; <span id="cf-enemies">0</span><br />
-        FACTORIES <span id="cf-factories">0</span>
+        FACTORIES <span id="cf-factories">0</span><br />
+        LIVES&nbsp;&nbsp;&nbsp;&nbsp; <span id="cf-lives">5</span>
       </div>
       <div class="hud__status">
         <div class="hud__bar-label">HULL</div>
@@ -140,6 +159,7 @@ export class PlayState implements GameState {
     this.factoryEl = this.root.querySelector<HTMLElement>("#cf-factories")!;
     this.flashEl = this.root.querySelector<HTMLElement>("#cf-flash")!;
     this.pickupEl = this.root.querySelector<HTMLElement>("#cf-pickup")!;
+    this.livesEl = this.root.querySelector<HTMLElement>("#cf-lives")!;
 
     this.pause = document.createElement("div");
     this.pause.className = "menu";
@@ -157,19 +177,64 @@ export class PlayState implements GameState {
       this.wantMenu = true;
     };
 
+    this.deathEl = document.createElement("div");
+    this.deathEl.className = "hud__death hidden";
+    this.deathEl.innerHTML = `
+      <div class="hud__death-title" id="cf-death-title">SHIP DESTROYED</div>
+      <div class="hud__death-sub" id="cf-death-sub">PRESS SPACE TO RESPAWN</div>
+    `;
+    game.container.appendChild(this.deathEl);
+    this.deathTitleEl =
+      this.deathEl.querySelector<HTMLElement>("#cf-death-title")!;
+    this.deathSubEl = this.deathEl.querySelector<HTMLElement>("#cf-death-sub")!;
+
     this.onClick = () => {
       this.game.music.start();
       this.game.sfx.start();
-      if (!this.game.input.isLocked) this.game.input.requestPointerLock();
+      if (this.phase === "play" && !this.game.input.isLocked) {
+        this.game.input.requestPointerLock();
+      }
     };
     game.renderer.domElement.addEventListener("click", this.onClick);
+  }
+
+  private die() {
+    this.lives -= 1;
+    this.game.sfx.explosion(2.4);
+    this.deathPos.copy(this.ship.position);
+    this.deathFx.trigger(this.deathPos, {
+      laser: this.weapons.laserLevel,
+      rockets: this.weapons.rocketAmmo,
+    });
+    this.phase = this.lives > 0 ? "dead" : "gameover";
+    this.deathTimer = 0;
+    this.spaceArmed = false;
+    if (this.phase === "gameover") {
+      this.deathTitleEl.textContent = "GAME OVER";
+      this.deathSubEl.textContent = "PRESS SPACE TO RESTART";
+    } else {
+      this.deathTitleEl.textContent = "SHIP DESTROYED";
+      this.deathSubEl.textContent = `${this.lives} LIVES LEFT — PRESS SPACE TO RESPAWN`;
+    }
+    this.deathEl.classList.remove("hidden");
+    this.root.classList.add("hidden");
+  }
+
+  private respawn() {
+    this.deathFx.reset();
+    this.ship.respawn(this.level.spawnPosition, this.level.spawnQuaternion);
+    this.ship.syncCamera(this.camera);
+    this.hull = MAX_HULL;
+    this.shield = MAX_SHIELD;
+    this.invuln = INVULN;
+    this.phase = "play";
+    this.deathEl.classList.add("hidden");
+    this.root.classList.remove("hidden");
   }
 
   private onClick: () => void = () => {};
 
   update(dt: number) {
-    const locked = this.game.input.isLocked;
-
     const nDown = this.game.input.isDown("KeyN");
     if (nDown && !this.musicKeyDown) this.game.music.toggleMute();
     this.musicKeyDown = nDown;
@@ -178,6 +243,14 @@ export class PlayState implements GameState {
       this.game.setState(new MenuState());
       return;
     }
+
+    if (this.phase !== "play") {
+      this.updateDeath(dt);
+      this.game.renderer.render(this.scene, this.camera);
+      return;
+    }
+
+    const locked = this.game.input.isLocked;
     if (locked && this.game.input.isDown("KeyM")) {
       this.game.input.exitPointerLock();
       this.game.setState(new MenuState());
@@ -254,14 +327,8 @@ export class PlayState implements GameState {
         dmg -= absorbed;
         this.hull -= dmg;
         if (this.hull <= 0) {
-          this.game.sfx.explosion(2);
-          this.ship.respawn(
-            this.level.spawnPosition,
-            this.level.spawnQuaternion,
-          );
-          this.hull = MAX_HULL;
-          this.shield = MAX_SHIELD;
-          this.invuln = INVULN;
+          this.hull = 0;
+          this.die();
         }
       }
       if (this.shieldDelay <= 0 && this.shield < MAX_SHIELD) {
@@ -274,6 +341,7 @@ export class PlayState implements GameState {
         .toFixed(0);
       this.enemyEl.textContent = this.enemies.count.toFixed(0);
       this.factoryEl.textContent = this.enemies.factoryCount.toFixed(0);
+      this.livesEl.textContent = this.lives.toFixed(0);
       this.hullEl.style.width = `${Math.max(0, (this.hull / MAX_HULL) * 100).toFixed(0)}%`;
       this.shieldEl.style.width = `${((this.shield / MAX_SHIELD) * 100).toFixed(0)}%`;
       this.rktEl.textContent = this.weapons.rocketAmmo.toFixed(0);
@@ -286,11 +354,37 @@ export class PlayState implements GameState {
     this.game.renderer.render(this.scene, this.camera);
   }
 
+  private updateDeath(dt: number) {
+    this.pause.classList.add("hidden");
+    this.level.update(dt);
+    this.deathFx.update(dt);
+    this.game.music.setIntensity(0);
+
+    // Cinematic third-person orbit around the wreck.
+    this.deathTimer += dt;
+    const ang = this.deathTimer * 0.5;
+    this.camera.position.set(
+      this.deathPos.x + Math.cos(ang) * 16,
+      this.deathPos.y + 6,
+      this.deathPos.z + Math.sin(ang) * 16,
+    );
+    this.camera.lookAt(this.deathPos);
+
+    const space = this.game.input.isDown("Space");
+    if (!space) this.spaceArmed = true;
+    if (this.spaceArmed && space && this.deathTimer >= DEATH_MIN) {
+      if (this.phase === "gameover") this.game.setState(new MenuState());
+      else this.respawn();
+    }
+  }
+
   exit() {
     this.game.input.exitPointerLock();
     this.game.renderer.domElement.removeEventListener("click", this.onClick);
     this.root.remove();
     this.pause.remove();
+    this.deathEl.remove();
+    this.deathFx.dispose();
     this.pickups.dispose();
     this.enemies.dispose();
     this.weapons.dispose();

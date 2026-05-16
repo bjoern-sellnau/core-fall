@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import type { Sfx } from "../audio/Sfx";
+import { RAPIER } from "../physics/Physics";
 import {
   BOLT_SPEED,
   type Bolt,
@@ -158,9 +159,11 @@ export class EnemySwarm {
   private readonly segA = new THREE.Vector3();
   private readonly segB = new THREE.Vector3();
   private readonly tmp = new THREE.Vector3();
+  private readonly losDir = new THREE.Vector3();
   private readonly desired = new THREE.Vector3();
 
   constructor(
+    private readonly world: RAPIER.World,
     private readonly sfx: Sfx,
     private readonly cfg: DiffConfig,
   ) {}
@@ -258,7 +261,11 @@ export class EnemySwarm {
         this.updateDasher(dr, dt, dist, playerPos, damp);
       } else {
         this.updateShooter(dr, dt, dist, damp);
-        if (dr.cool <= 0 && dist < SHOOT_RANGE) {
+        if (
+          dr.cool <= 0 &&
+          dist < SHOOT_RANGE &&
+          !this.blocked(dr.mesh.position, playerPos)
+        ) {
           this.fireEnemyBolt(dr, playerPos);
           dr.cool = 1.4 + Math.random() * 1.8;
           threat += 0.4;
@@ -335,6 +342,20 @@ export class EnemySwarm {
     dr.mesh.position.lerp(this.desired, damp);
   }
 
+  /** True if level geometry sits between `from` and `to`. */
+  private blocked(from: THREE.Vector3, to: THREE.Vector3): boolean {
+    this.losDir.subVectors(to, from);
+    const dist = this.losDir.length();
+    if (dist < 1) return false;
+    this.losDir.multiplyScalar(1 / dist);
+    const hit = this.world.castRay(
+      new RAPIER.Ray(from, this.losDir),
+      dist,
+      true,
+    );
+    return !!hit && hit.timeOfImpact < dist - 3;
+  }
+
   private fireEnemyBolt(dr: Drone, playerPos: THREE.Vector3) {
     const mesh = new THREE.Mesh(this.eboltGeo, this.eboltMat);
     mesh.position.copy(dr.mesh.position);
@@ -351,6 +372,21 @@ export class EnemySwarm {
     for (let i = this.ebolts.length - 1; i >= 0; i--) {
       const e = this.ebolts[i];
       e.life -= dt;
+
+      // Stop at walls instead of passing through them.
+      const speed = e.vel.length();
+      this.losDir.copy(e.vel).multiplyScalar(1 / (speed || 1));
+      const wall = this.world.castRay(
+        new RAPIER.Ray(e.mesh.position, this.losDir),
+        speed * dt,
+        true,
+      );
+      if (wall) {
+        this.group.remove(e.mesh);
+        this.ebolts.splice(i, 1);
+        continue;
+      }
+
       e.mesh.position.addScaledVector(e.vel, dt);
       if (e.mesh.position.distanceTo(playerPos) < SHIP_RADIUS + 0.6) {
         this.pendingDamage += this.cfg.enemyDmg;
