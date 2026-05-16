@@ -155,7 +155,7 @@ export class PlayState implements GameState {
       <div class="hud__flash" id="cf-flash"></div>
       <div class="hud__pickup" id="cf-pickup"></div>
       <div class="hud__crosshair"></div>
-      <div class="hud__hint">LMB LASER &middot; RMB ROCKET &middot; V VIEW &middot; M MAP &middot; R RESET</div>
+      <div class="hud__hint">LMB FIRE &middot; 1-5/0 WEAPON &middot; V VIEW &middot; M MAP &middot; R RESET</div>
       <div class="hud__readout">
         COREFALL // TEST RUN<br />
         SPEED&nbsp;&nbsp;&nbsp;&nbsp; <span id="cf-speed">0</span> u/s<br />

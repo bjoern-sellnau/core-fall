@@ -144,11 +144,16 @@ export class WeaponSystem {
     this.vulcan += n;
   }
 
-  /** Slot 1-5 → primary, 0 → rockets. */
+  /** Slot 1-5 → primary, 0 → rockets. Plays a blip on change. */
   selectSlot(slot: number) {
-    if (slot === 0) this.selected = "rockets";
-    else if (slot >= 1 && slot <= PRIMARY.length)
-      this.selected = PRIMARY[slot - 1];
+    let next = this.selected;
+    if (slot === 0) next = "rockets";
+    else if (slot >= 1 && slot <= PRIMARY.length) next = PRIMARY[slot - 1];
+    if (next !== this.selected) {
+      this.selected = next;
+      this.charge = 0;
+      this.sfx.weaponSelect();
+    }
   }
 
   kill(b: Bolt) {

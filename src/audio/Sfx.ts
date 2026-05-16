@@ -294,6 +294,26 @@ export class Sfx {
     sh.stop(t + 0.65);
   }
 
+  /** Two-tone select blip for switching weapons. */
+  weaponSelect() {
+    if (!this.ctx) return;
+    const ctx = this.ctx;
+    const t = ctx.currentTime;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.26, t + 0.008);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.14);
+    g.connect(this.master);
+
+    const o = ctx.createOscillator();
+    o.type = "square";
+    o.frequency.setValueAtTime(740, t);
+    o.frequency.setValueAtTime(1180, t + 0.06);
+    o.connect(g);
+    o.start(t);
+    o.stop(t + 0.16);
+  }
+
   /** Noisy boom with a low thump; scale ~1 default, larger = bigger. */
   explosion(scale = 1) {
     if (!this.ctx) return;
