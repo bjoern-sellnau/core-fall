@@ -20,6 +20,7 @@ export class PlayState implements GameState {
   private pause!: HTMLElement;
   private speedEl!: HTMLElement;
   private wantMenu = false;
+  private musicKeyDown = false;
 
   enter(game: Game) {
     this.game = game;
@@ -73,6 +74,7 @@ export class PlayState implements GameState {
     };
 
     this.onClick = () => {
+      this.game.music.start();
       if (!this.game.input.isLocked) this.game.input.requestPointerLock();
     };
     game.renderer.domElement.addEventListener("click", this.onClick);
@@ -82,6 +84,10 @@ export class PlayState implements GameState {
 
   update(dt: number) {
     const locked = this.game.input.isLocked;
+
+    const nDown = this.game.input.isDown("KeyN");
+    if (nDown && !this.musicKeyDown) this.game.music.toggleMute();
+    this.musicKeyDown = nDown;
 
     if (this.wantMenu) {
       this.game.setState(new MenuState());

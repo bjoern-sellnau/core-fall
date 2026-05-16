@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { Input } from "./Input";
+import { MusicEngine } from "../audio/Music";
 import type { GameState } from "../states/GameState";
 
 /**
@@ -10,6 +11,7 @@ export class Game {
   readonly renderer: THREE.WebGLRenderer;
   readonly container: HTMLElement;
   readonly input: Input;
+  readonly music = new MusicEngine();
 
   private current: GameState | null = null;
   private clock = new THREE.Clock();

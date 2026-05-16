@@ -63,12 +63,15 @@ export class MenuState implements GameState {
       <div class="menu__controls">
         <b>Mouse</b> aim &nbsp;|&nbsp; <b>W/S</b> thrust &nbsp;|&nbsp; <b>A/D</b> strafe<br />
         <b>Space/C</b> up&middot;down &nbsp;|&nbsp; <b>Q/E</b> roll &nbsp;|&nbsp; <b>Shift</b> boost<br />
-        <b>Esc</b> release mouse
+        <b>Esc</b> release mouse &nbsp;|&nbsp; <b>N</b> music on/off
       </div>
     `;
     game.container.appendChild(this.root);
 
-    const start = () => this.game.setState(new PlayState());
+    const start = () => {
+      this.game.music.start();
+      this.game.setState(new PlayState());
+    };
     this.root.querySelector<HTMLButtonElement>("#cf-start")!.onclick = start;
     this.onKey = (e: KeyboardEvent) => {
       if (e.code === "Enter") start();
