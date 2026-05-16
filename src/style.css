@@ -148,6 +148,18 @@ canvas {
   text-shadow: 0 0 16px currentColor;
 }
 
+.hud__map {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+}
+
+.hud__map canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
 .hud__death {
   position: absolute;
   inset: 0;

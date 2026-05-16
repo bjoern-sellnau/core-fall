@@ -54,6 +54,7 @@ export class Level {
   readonly spawnPosition: THREE.Vector3;
   readonly spawnQuaternion: THREE.Quaternion;
   readonly corePosition: THREE.Vector3;
+  readonly mapBoxes: { x0: number; z0: number; x1: number; z1: number }[] = [];
   readonly enemySpawns: THREE.Vector3[] = [];
   readonly factorySpawns: THREE.Vector3[] = [];
   readonly pickupSpawns: THREE.Vector3[] = [];
@@ -202,6 +203,12 @@ export class Level {
         group: sectorGroup,
         c: new THREE.Vector3(cx, cy, cz),
         r2: (half + 60) ** 2,
+      });
+      this.mapBoxes.push({
+        x0: b.min[0],
+        z0: b.min[2],
+        x1: b.max[0],
+        z1: b.max[2],
       });
 
       if (b.light > 0) {

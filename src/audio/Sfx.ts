@@ -256,6 +256,44 @@ export class Sfx {
     }
   }
 
+  /** Warp-in materialise for (re)spawning, Descent-ish. */
+  spawn() {
+    if (!this.ctx) return;
+    const ctx = this.ctx;
+    const t = ctx.currentTime;
+
+    const osc = ctx.createOscillator();
+    osc.type = "sawtooth";
+    osc.frequency.setValueAtTime(70, t);
+    osc.frequency.exponentialRampToValueAtTime(900, t + 0.5);
+
+    const sh = ctx.createOscillator();
+    sh.type = "square";
+    sh.frequency.setValueAtTime(420, t);
+    sh.frequency.exponentialRampToValueAtTime(1700, t + 0.55);
+
+    const lp = ctx.createBiquadFilter();
+    lp.type = "lowpass";
+    lp.frequency.setValueAtTime(500, t);
+    lp.frequency.exponentialRampToValueAtTime(4200, t + 0.5);
+    lp.Q.value = 6;
+
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.32, t + 0.1);
+    g.gain.setValueAtTime(0.32, t + 0.45);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.62);
+
+    osc.connect(lp);
+    sh.connect(lp);
+    lp.connect(g);
+    g.connect(this.master);
+    osc.start(t);
+    sh.start(t);
+    osc.stop(t + 0.65);
+    sh.stop(t + 0.65);
+  }
+
   /** Noisy boom with a low thump; scale ~1 default, larger = bigger. */
   explosion(scale = 1) {
     if (!this.ctx) return;

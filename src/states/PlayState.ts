@@ -10,6 +10,7 @@ import { EnemySwarm, difficultyConfig } from "../world/Enemies";
 import { PickupField, type PickupKind } from "../world/Pickups";
 import { DeathFx } from "../world/DeathFx";
 import { Doors } from "../world/Doors";
+import { MapView } from "../ui/MapView";
 
 const PICKUP_INFO: Record<PickupKind, { css: string; label: string }> = {
   health: { css: "#44ff88", label: "HULL +35" },
@@ -44,6 +45,8 @@ export class PlayState implements GameState {
   private enemies!: EnemySwarm;
   private pickups!: PickupField;
   private doors!: Doors;
+  private mapView!: MapView;
+  private mapKeyDown = false;
 
   private keys = { blue: false, red: false, yellow: false };
   private viewMode: "fp" | "chase" = "fp";
@@ -109,6 +112,7 @@ export class PlayState implements GameState {
     this.ship.model.visible = false;
     this.scene.add(this.ship.model);
     this.ship.syncCamera(this.camera);
+    this.game.sfx.spawn();
 
     this.doors = new Doors(
       this.physics.world,
@@ -116,6 +120,8 @@ export class PlayState implements GameState {
       this.level.doorDefs,
     );
     this.scene.add(this.doors.group);
+
+    this.mapView = new MapView(game.container);
 
     this.weapons = new WeaponSystem(
       this.physics.world,
@@ -149,7 +155,7 @@ export class PlayState implements GameState {
       <div class="hud__flash" id="cf-flash"></div>
       <div class="hud__pickup" id="cf-pickup"></div>
       <div class="hud__crosshair"></div>
-      <div class="hud__hint">LMB LASER &middot; RMB ROCKET &middot; V VIEW &middot; ESC RELEASE</div>
+      <div class="hud__hint">LMB LASER &middot; RMB ROCKET &middot; V VIEW &middot; M MAP &middot; R RESET</div>
       <div class="hud__readout">
         COREFALL // TEST RUN<br />
         SPEED&nbsp;&nbsp;&nbsp;&nbsp; <span id="cf-speed">0</span> u/s<br />
@@ -251,6 +257,7 @@ export class PlayState implements GameState {
     // Resume right where you died — the level keeps its state.
     this.ship.respawn(this.deathPos, this.level.spawnQuaternion);
     this.ship.syncCamera(this.camera);
+    this.game.sfx.spawn();
     this.hull = MAX_HULL;
     this.shield = MAX_SHIELD;
     this.invuln = INVULN;
@@ -278,9 +285,24 @@ export class PlayState implements GameState {
     }
 
     const locked = this.game.input.isLocked;
-    if (locked && this.game.input.isDown("KeyM")) {
-      this.game.input.exitPointerLock();
-      this.game.setState(new MenuState());
+
+    // Automap toggle (pauses the sim while open).
+    const mDown = this.game.input.isDown("KeyM");
+    if (mDown && !this.mapKeyDown) this.mapView.toggle();
+    this.mapKeyDown = mDown;
+
+    if (this.mapView.visible) {
+      this.pause.classList.add("hidden");
+      this.tmpFwd.set(0, 0, -1).applyQuaternion(this.ship.quaternion);
+      this.mapView.render(
+        this.level.mapBoxes,
+        this.level.doorDefs,
+        { x: this.level.corePosition.x, z: this.level.corePosition.z },
+        { x: this.ship.position.x, z: this.ship.position.z },
+        { x: this.tmpFwd.x, z: this.tmpFwd.z },
+        this.keys,
+      );
+      this.game.renderer.render(this.scene, this.camera);
       return;
     }
 
@@ -495,6 +517,7 @@ export class PlayState implements GameState {
     this.root.remove();
     this.pause.remove();
     this.deathEl.remove();
+    this.mapView.remove();
     this.deathFx.dispose();
     this.doors.dispose();
     this.pickups.dispose();

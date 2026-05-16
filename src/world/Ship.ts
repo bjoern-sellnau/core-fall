@@ -29,9 +29,7 @@ export class Ship {
   private readonly right = new THREE.Vector3();
   private readonly up = new THREE.Vector3();
   private readonly tmpQuat = new THREE.Quaternion();
-  private readonly levelQuat = new THREE.Quaternion();
-  private readonly levelMat = new THREE.Matrix4();
-  private readonly worldUp = new THREE.Vector3(0, 1, 0);
+  private readonly resetQuat = new THREE.Quaternion();
   private readonly accel = new THREE.Vector3();
 
   constructor(
@@ -41,6 +39,7 @@ export class Ship {
   ) {
     this.position.copy(spawnPos);
     this.quaternion.copy(spawnQuat);
+    this.resetQuat.copy(spawnQuat);
 
     this.body = world.createRigidBody(
       RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(
@@ -138,24 +137,9 @@ export class Ship {
     if (input.isDown("KeyE")) roll -= 1; // roll right
     if (roll !== 0) this.rotateLocal(0, 0, 1, roll * ROLL_SPEED * dt);
 
-    // Auto-level: ease back to "upright" (world-up) keeping heading.
+    // Reset: ease the orientation back to the default rotation only.
     if (input.isDown("KeyR")) {
-      this.fwd.set(0, 0, -1).applyQuaternion(this.quaternion);
-      if (Math.abs(this.fwd.y) > 0.97) {
-        this.fwd.y = 0;
-        if (this.fwd.lengthSq() < 1e-4) this.fwd.set(0, 0, -1);
-        this.fwd.normalize();
-      }
-      this.levelMat.lookAt(
-        new THREE.Vector3(),
-        this.fwd.clone().negate(),
-        this.worldUp,
-      );
-      this.levelQuat.setFromRotationMatrix(this.levelMat);
-      this.quaternion.slerp(
-        this.levelQuat,
-        1 - Math.exp(-LEVEL_RATE * dt),
-      );
+      this.quaternion.slerp(this.resetQuat, 1 - Math.exp(-LEVEL_RATE * dt));
     }
 
     this.quaternion.normalize();
