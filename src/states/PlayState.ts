@@ -110,7 +110,11 @@ export class PlayState implements GameState {
     this.scene.add(this.ship.model);
     this.ship.syncCamera(this.camera);
 
-    this.doors = new Doors(this.physics.world, this.level.doorDefs);
+    this.doors = new Doors(
+      this.physics.world,
+      this.game.sfx,
+      this.level.doorDefs,
+    );
     this.scene.add(this.doors.group);
 
     this.weapons = new WeaponSystem(

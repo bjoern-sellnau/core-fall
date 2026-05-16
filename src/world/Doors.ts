@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { RAPIER } from "../physics/Physics";
+import type { Sfx } from "../audio/Sfx";
 
 export type DoorColor = "normal" | "blue" | "red" | "yellow";
 
@@ -43,6 +44,7 @@ export class Doors {
 
   constructor(
     private readonly world: RAPIER.World,
+    private readonly sfx: Sfx,
     defs: DoorDef[],
   ) {
     for (const def of defs) {
@@ -106,6 +108,9 @@ export class Doors {
       if (solid !== d.solid) {
         d.solid = solid;
         d.collider.setEnabled(solid);
+        if (playerPos.distanceTo(d.mesh.position) < 60) {
+          this.sfx.door(!solid);
+        }
       }
     }
   }

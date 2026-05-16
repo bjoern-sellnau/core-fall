@@ -211,6 +211,51 @@ export class Sfx {
     src.stop(t + 0.24);
   }
 
+  /** Servo whir for a door opening / closing. */
+  door(open: boolean) {
+    if (!this.ctx) return;
+    const ctx = this.ctx;
+    const t = ctx.currentTime;
+
+    const osc = ctx.createOscillator();
+    osc.type = "sawtooth";
+    osc.frequency.setValueAtTime(open ? 110 : 200, t);
+    osc.frequency.exponentialRampToValueAtTime(open ? 240 : 90, t + 0.35);
+
+    const lp = ctx.createBiquadFilter();
+    lp.type = "lowpass";
+    lp.frequency.value = 1300;
+    lp.Q.value = 4;
+
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.22, t + 0.04);
+    g.gain.setValueAtTime(0.22, t + 0.3);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.42);
+
+    osc.connect(lp);
+    lp.connect(g);
+    g.connect(this.master);
+    osc.start(t);
+    osc.stop(t + 0.45);
+
+    if (!open) {
+      // Closing thunk.
+      const k = ctx.createOscillator();
+      k.type = "sine";
+      k.frequency.setValueAtTime(120, t + 0.34);
+      k.frequency.exponentialRampToValueAtTime(45, t + 0.46);
+      const kg = ctx.createGain();
+      kg.gain.setValueAtTime(0.0001, t + 0.34);
+      kg.gain.exponentialRampToValueAtTime(0.5, t + 0.36);
+      kg.gain.exponentialRampToValueAtTime(0.0001, t + 0.5);
+      k.connect(kg);
+      kg.connect(this.master);
+      k.start(t + 0.34);
+      k.stop(t + 0.52);
+    }
+  }
+
   /** Noisy boom with a low thump; scale ~1 default, larger = bigger. */
   explosion(scale = 1) {
     if (!this.ctx) return;
