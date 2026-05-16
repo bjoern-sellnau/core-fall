@@ -144,6 +144,15 @@ export class WeaponSystem {
     this.vulcan += n;
   }
 
+  /** Back to the starting loadout (used when the ship is destroyed). */
+  resetLoadout() {
+    this.laser = 1;
+    this.rockets = 0;
+    this.vulcan = 250;
+    this.selected = "laser";
+    this.charge = 0;
+  }
+
   /** Slot 1-5 → primary, 0 → rockets. Plays a blip on change. */
   selectSlot(slot: number) {
     let next = this.selected;

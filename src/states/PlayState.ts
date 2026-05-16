@@ -254,8 +254,33 @@ export class PlayState implements GameState {
   private respawn() {
     this.deathFx.reset();
     this.game.music.setScene("game");
-    // Resume right where you died — the level keeps its state.
-    this.ship.respawn(this.deathPos, this.level.spawnQuaternion);
+
+    // Drop the gear you were carrying where you died, then start over
+    // from the level entrance with a bare ship (Descent style).
+    const jitter = () =>
+      new THREE.Vector3(
+        (Math.random() - 0.5) * 6,
+        (Math.random() - 0.5) * 6,
+        (Math.random() - 0.5) * 6,
+      );
+    const lvl = this.weapons.laserLevel;
+    for (let i = 1; i < lvl; i++) {
+      this.pickups.add(this.deathPos.clone().add(jitter()), "laser");
+    }
+    if (this.weapons.rocketAmmo > 0) {
+      this.pickups.add(this.deathPos.clone().add(jitter()), "rockets");
+    }
+    if (this.keys.blue)
+      this.pickups.add(this.deathPos.clone().add(jitter()), "keyblue");
+    if (this.keys.red)
+      this.pickups.add(this.deathPos.clone().add(jitter()), "keyred");
+    if (this.keys.yellow)
+      this.pickups.add(this.deathPos.clone().add(jitter()), "keyyellow");
+
+    this.weapons.resetLoadout();
+    this.keys = { blue: false, red: false, yellow: false };
+
+    this.ship.respawn(this.level.spawnPosition, this.level.spawnQuaternion);
     this.ship.syncCamera(this.camera);
     this.game.sfx.spawn();
     this.hull = MAX_HULL;
