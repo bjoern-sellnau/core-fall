@@ -178,6 +178,39 @@ export class Sfx {
     osc.stop(t + 0.22);
   }
 
+  /** Harsh hit taken by the player. */
+  hit() {
+    if (!this.ctx) return;
+    const ctx = this.ctx;
+    const t = ctx.currentTime;
+
+    const osc = ctx.createOscillator();
+    osc.type = "square";
+    osc.frequency.setValueAtTime(280, t);
+    osc.frequency.exponentialRampToValueAtTime(70, t + 0.18);
+
+    const src = ctx.createBufferSource();
+    src.buffer = this.noise;
+    const bp = ctx.createBiquadFilter();
+    bp.type = "bandpass";
+    bp.frequency.value = 900;
+    bp.Q.value = 0.7;
+
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.5, t + 0.005);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.22);
+
+    osc.connect(g);
+    src.connect(bp);
+    bp.connect(g);
+    g.connect(this.master);
+    osc.start(t);
+    osc.stop(t + 0.24);
+    src.start(t);
+    src.stop(t + 0.24);
+  }
+
   /** Noisy boom with a low thump; scale ~1 default, larger = bigger. */
   explosion(scale = 1) {
     if (!this.ctx) return;

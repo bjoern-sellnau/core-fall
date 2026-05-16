@@ -323,6 +323,10 @@ export class PlayState implements GameState {
       this.shieldDelay = Math.max(0, this.shieldDelay - dt);
       let dmg = this.enemies.consumeDamage();
       if (dmg > 0 && this.invuln <= 0) {
+        this.game.sfx.hit();
+        this.flashT = 0.3;
+        this.flashColor = "#ff2e2e";
+        this.pickupEl.textContent = "";
         this.shieldDelay = SHIELD_DELAY;
         const absorbed = Math.min(this.shield, dmg);
         this.shield -= absorbed;
