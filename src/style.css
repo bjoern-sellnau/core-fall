@@ -1,0 +1,164 @@
+:root {
+  --cf-cyan: #38f0e6;
+  --cf-amber: #ffb24a;
+  --cf-bg: #04060a;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: var(--cf-bg);
+  color: #cfe9ff;
+  font-family: "Courier New", ui-monospace, monospace;
+}
+
+canvas {
+  display: block;
+}
+
+/* ---- Main menu ---- */
+.menu {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1.5rem;
+  background: radial-gradient(circle at 50% 40%, #0a1626 0%, #04060a 70%);
+  text-align: center;
+  user-select: none;
+}
+
+.menu__title {
+  font-size: clamp(3rem, 12vw, 8rem);
+  letter-spacing: 0.4rem;
+  font-weight: 900;
+  color: var(--cf-cyan);
+  text-shadow:
+    0 0 12px rgba(56, 240, 230, 0.8),
+    0 0 36px rgba(56, 240, 230, 0.4);
+}
+
+.menu__subtitle {
+  font-size: clamp(0.8rem, 2vw, 1.1rem);
+  letter-spacing: 0.5rem;
+  color: var(--cf-amber);
+  opacity: 0.85;
+  margin-top: -0.8rem;
+}
+
+.menu__buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.menu__btn {
+  appearance: none;
+  background: transparent;
+  border: 1px solid var(--cf-cyan);
+  color: var(--cf-cyan);
+  font-family: inherit;
+  font-size: 1.1rem;
+  letter-spacing: 0.25rem;
+  padding: 0.75rem 3rem;
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.menu__btn:hover,
+.menu__btn:focus-visible {
+  background: var(--cf-cyan);
+  color: var(--cf-bg);
+  box-shadow: 0 0 24px rgba(56, 240, 230, 0.6);
+  outline: none;
+}
+
+.menu__controls {
+  margin-top: 1.5rem;
+  font-size: 0.8rem;
+  line-height: 1.7;
+  color: #7fa8c4;
+  letter-spacing: 0.1rem;
+}
+
+.menu__controls b {
+  color: #cfe9ff;
+}
+
+/* ---- HUD ---- */
+.hud {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  color: var(--cf-cyan);
+  text-shadow: 0 0 8px rgba(56, 240, 230, 0.7);
+  font-size: 0.9rem;
+  letter-spacing: 0.15rem;
+}
+
+.hud__crosshair {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 26px;
+  height: 26px;
+  transform: translate(-50%, -50%);
+  border: 1px solid rgba(56, 240, 230, 0.6);
+  border-radius: 50%;
+}
+
+.hud__crosshair::before,
+.hud__crosshair::after {
+  content: "";
+  position: absolute;
+  background: rgba(56, 240, 230, 0.6);
+}
+
+.hud__crosshair::before {
+  top: 50%;
+  left: -8px;
+  right: -8px;
+  height: 1px;
+}
+
+.hud__crosshair::after {
+  left: 50%;
+  top: -8px;
+  bottom: -8px;
+  width: 1px;
+}
+
+.hud__readout {
+  position: absolute;
+  bottom: 1.5rem;
+  left: 1.5rem;
+  line-height: 1.6;
+}
+
+.hud__hint {
+  position: absolute;
+  top: 1.5rem;
+  left: 50%;
+  transform: translateX(-50%);
+  color: var(--cf-amber);
+  opacity: 0.9;
+}
+
+.hidden {
+  display: none !important;
+}
