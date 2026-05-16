@@ -58,6 +58,11 @@ export class Ship {
     return this.velocity.length();
   }
 
+  /** Exposed so weapons can exclude the ship from their raycasts. */
+  get rigidBody(): RAPIER.RigidBody {
+    return this.body;
+  }
+
   update(dt: number, input: Input) {
     // --- Orientation: local-space pitch / yaw / roll ---
     const { dx, dy } = input.consumeMouse();

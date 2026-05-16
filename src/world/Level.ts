@@ -35,6 +35,7 @@ export class Level {
   readonly group = new THREE.Group();
   readonly spawnPosition: THREE.Vector3;
   readonly spawnQuaternion: THREE.Quaternion;
+  readonly corePosition: THREE.Vector3;
 
   private reactor: THREE.Mesh;
   private reactorLight: THREE.PointLight;
@@ -124,6 +125,8 @@ export class Level {
 
     // Ambient + key fill so surfaces are never pure black.
     this.group.add(new THREE.AmbientLight(0x1a2a3a, 1.1));
+
+    this.corePosition = Level.CHAMBER_CENTER.clone();
 
     // --- Spawn at the tunnel mouth, facing inward ---
     this.spawnPosition = path.getPointAt(0.01);

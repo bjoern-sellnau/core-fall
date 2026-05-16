@@ -159,6 +159,41 @@ canvas {
   opacity: 0.9;
 }
 
+.hud__weapon {
+  position: absolute;
+  bottom: 1.5rem;
+  right: 1.5rem;
+  text-align: right;
+}
+
+.hud__weapon-name {
+  font-size: 0.9rem;
+  letter-spacing: 0.2rem;
+  margin-bottom: 0.4rem;
+}
+
+.hud__energy {
+  width: 180px;
+  height: 10px;
+  border: 1px solid rgba(56, 240, 230, 0.6);
+  background: rgba(56, 240, 230, 0.08);
+}
+
+.hud__energy-fill {
+  height: 100%;
+  width: 100%;
+  background: var(--cf-cyan);
+  box-shadow: 0 0 10px rgba(56, 240, 230, 0.7);
+  transition:
+    width 0.08s linear,
+    background 0.2s ease;
+}
+
+.hud__energy-fill--low {
+  background: var(--cf-amber);
+  box-shadow: 0 0 10px rgba(255, 178, 74, 0.7);
+}
+
 .hidden {
   display: none !important;
 }
