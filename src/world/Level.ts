@@ -70,6 +70,15 @@ export class Level {
   private reactorLight: THREE.PointLight;
   private elapsed = 0;
 
+  private sectors: { group: THREE.Group; c: THREE.Vector3; r2: number }[] = [];
+  private lightPool: THREE.PointLight[] = [];
+  private lightSrc: {
+    p: THREE.Vector3;
+    color: number;
+    intensity: number;
+    range: number;
+  }[] = [];
+
   private static readonly CORE = new THREE.Vector3(0, -6, -470);
 
   constructor(world: RAPIER.World) {
@@ -99,24 +108,38 @@ export class Level {
       box(0, -6, -470, 48, 32, 48, 0, true), // 20 reactor room
     ];
 
-    const verts: number[] = [];
-    const push = (
-      a: number,
-      ua: number,
-      va: number,
-      coord: number,
-      u: number,
-      v: number,
-    ) => {
-      const p = [0, 0, 0];
-      p[a] = coord;
-      p[ua] = u;
-      p[va] = v;
-      verts.push(p[0], p[1], p[2]);
-    };
+    const merged: number[] = [];
+    const sharedMat = new THREE.MeshStandardMaterial({
+      color: 0x36475a,
+      metalness: 0.55,
+      roughness: 0.65,
+      side: THREE.DoubleSide,
+      emissive: 0x16242f,
+    });
+    const lineMat = new THREE.LineBasicMaterial({
+      color: 0x3a7f9c,
+      transparent: true,
+      opacity: 0.3,
+    });
 
     for (let bi = 0; bi < boxes.length; bi++) {
       const b = boxes[bi];
+      const v: number[] = [];
+      const push = (
+        a: number,
+        ua: number,
+        va: number,
+        coord: number,
+        u: number,
+        w: number,
+      ) => {
+        const p = [0, 0, 0];
+        p[a] = coord;
+        p[ua] = u;
+        p[va] = w;
+        v.push(p[0], p[1], p[2]);
+      };
+
       for (let a = 0; a < 3; a++) {
         const ua = (a + 1) % 3;
         const va = (a + 2) % 3;
@@ -125,7 +148,6 @@ export class Level {
           let rects: Rect[] = [
             { x0: b.min[ua], x1: b.max[ua], y0: b.min[va], y1: b.max[va] },
           ];
-          // Open doorways where another box straddles this face plane.
           for (let bj = 0; bj < boxes.length; bj++) {
             if (bj === bi) continue;
             const o = boxes[bj];
@@ -152,27 +174,60 @@ export class Level {
         }
       }
 
+      for (const n of v) merged.push(n);
+
+      // One mesh + edge overlay per sector so far rooms can be culled.
+      const sgeo = new THREE.BufferGeometry();
+      sgeo.setAttribute(
+        "position",
+        new THREE.BufferAttribute(new Float32Array(v), 3),
+      );
+      sgeo.computeVertexNormals();
+      const sectorGroup = new THREE.Group();
+      sectorGroup.add(new THREE.Mesh(sgeo, sharedMat));
+      sectorGroup.add(
+        new THREE.LineSegments(new THREE.EdgesGeometry(sgeo, 25), lineMat),
+      );
+      this.group.add(sectorGroup);
+
       const cx = (b.min[0] + b.max[0]) / 2;
       const cy = (b.min[1] + b.max[1]) / 2;
       const cz = (b.min[2] + b.max[2]) / 2;
+      const half = Math.max(
+        b.max[0] - b.min[0],
+        b.max[1] - b.min[1],
+        b.max[2] - b.min[2],
+      );
+      this.sectors.push({
+        group: sectorGroup,
+        c: new THREE.Vector3(cx, cy, cz),
+        r2: (half + 60) ** 2,
+      });
+
       if (b.light > 0) {
         const span = Math.max(
           b.max[0] - b.min[0],
           b.max[1] - b.min[1],
           b.max[2] - b.min[2],
         );
-        const lamp = new THREE.PointLight(
-          b.warm ? 0xffb060 : 0x8fe8ff,
-          b.light * 2.4,
-          span * 1.9,
-          1.7,
-        );
-        lamp.position.set(cx, cy, cz);
-        this.group.add(lamp);
+        this.lightSrc.push({
+          p: new THREE.Vector3(cx, cy, cz),
+          color: b.warm ? 0xffb060 : 0x8fe8ff,
+          intensity: b.light * 2.4,
+          range: span * 1.9,
+        });
       }
       if (bi !== 0) {
         this.enemySpawns.push(new THREE.Vector3(cx, cy, cz));
       }
+    }
+
+    // Fixed light pool (constant light count → no shader recompiles);
+    // repositioned each frame to the sectors nearest the player.
+    for (let i = 0; i < 5; i++) {
+      const l = new THREE.PointLight(0x8fe8ff, 0, 60, 1.7);
+      this.group.add(l);
+      this.lightPool.push(l);
     }
 
     const center = (i: number) =>
@@ -192,32 +247,8 @@ export class Level {
       { pos: center(12).add(new THREE.Vector3(0, 3, 0)), kind: "keyred" },
     );
 
-    const positions = new Float32Array(verts);
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute("position", new THREE.BufferAttribute(positions, 3));
-    geo.computeVertexNormals();
-
-    const mat = new THREE.MeshStandardMaterial({
-      color: 0x36475a,
-      metalness: 0.55,
-      roughness: 0.65,
-      side: THREE.DoubleSide,
-      emissive: 0x16242f,
-    });
-    this.group.add(new THREE.Mesh(geo, mat));
-
-    // Edge grid for the classic Descent look.
-    this.group.add(
-      new THREE.LineSegments(
-        new THREE.EdgesGeometry(geo, 25),
-        new THREE.LineBasicMaterial({
-          color: 0x3a7f9c,
-          transparent: true,
-          opacity: 0.3,
-        }),
-      ),
-    );
-
+    // Single static collider for the whole mine (physics needs no culling).
+    const positions = new Float32Array(merged);
     const indices = new Uint32Array(positions.length / 3);
     for (let i = 0; i < indices.length; i++) indices[i] = i;
     const body = world.createRigidBody(RAPIER.RigidBodyDesc.fixed());
@@ -272,7 +303,7 @@ export class Level {
     this.spawnQuaternion = new THREE.Quaternion().setFromRotationMatrix(m);
   }
 
-  update(dt: number) {
+  update(dt: number, playerPos: THREE.Vector3) {
     this.elapsed += dt;
     this.reactor.rotation.y += dt * 0.6;
     this.reactor.rotation.x += dt * 0.25;
@@ -280,6 +311,30 @@ export class Level {
     this.reactorLight.intensity = 150 * pulse;
     (this.reactor.material as THREE.MeshStandardMaterial).emissiveIntensity =
       1.2 + pulse * 0.4;
+
+    // Sector culling: only draw rooms near the player.
+    for (const s of this.sectors) {
+      s.group.visible = playerPos.distanceToSquared(s.c) < s.r2;
+    }
+
+    // Park the light pool on the nearest light sources.
+    const src = this.lightSrc;
+    const nearest = src
+      .map((s, i) => ({ i, d: playerPos.distanceToSquared(s.p) }))
+      .sort((a, b) => a.d - b.d);
+    for (let k = 0; k < this.lightPool.length; k++) {
+      const l = this.lightPool[k];
+      const pick = nearest[k];
+      if (pick) {
+        const s = src[pick.i];
+        l.position.copy(s.p);
+        l.color.setHex(s.color);
+        l.intensity = s.intensity;
+        l.distance = s.range;
+      } else {
+        l.intensity = 0;
+      }
+    }
   }
 
   dispose() {

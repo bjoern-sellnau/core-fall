@@ -244,7 +244,8 @@ export class PlayState implements GameState {
   private respawn() {
     this.deathFx.reset();
     this.game.music.setScene("game");
-    this.ship.respawn(this.level.spawnPosition, this.level.spawnQuaternion);
+    // Resume right where you died — the level keeps its state.
+    this.ship.respawn(this.deathPos, this.level.spawnQuaternion);
     this.ship.syncCamera(this.camera);
     this.hull = MAX_HULL;
     this.shield = MAX_SHIELD;
@@ -290,7 +291,7 @@ export class PlayState implements GameState {
     if (locked) {
       this.ship.update(dt, this.game.input);
       this.physics.step(dt);
-      this.level.update(dt);
+      this.level.update(dt, this.ship.position);
 
       this.ship.model.position.copy(this.ship.position);
       this.ship.model.quaternion.copy(this.ship.quaternion);
@@ -448,7 +449,7 @@ export class PlayState implements GameState {
 
     // Slow-motion spectacle; real time still drives the SPACE prompt.
     const sdt = dt * 0.3;
-    this.level.update(sdt);
+    this.level.update(sdt, this.deathPos);
     this.deathFx.update(sdt);
 
     // Cinematic third-person orbit, but keep the camera inside the

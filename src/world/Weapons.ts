@@ -67,9 +67,10 @@ export class WeaponSystem {
     private readonly excludeBody: RAPIER.RigidBody,
     private readonly sfx: Sfx,
   ) {
-    for (let i = 0; i < 10; i++) {
+    // Always-present (constant count → no shader recompiles); unused
+    // lights just sit at intensity 0.
+    for (let i = 0; i < 6; i++) {
       const l = new THREE.PointLight(0x66f0ff, 0, 34, 1.8);
-      l.visible = false;
       this.group.add(l);
       this.lightPool.push(l);
     }
@@ -242,7 +243,6 @@ export class WeaponSystem {
     for (const r of this.rocketList) {
       if (n >= this.lightPool.length) break;
       const l = this.lightPool[n++];
-      l.visible = true;
       l.color.setHex(0xffae50);
       l.intensity = 26;
       l.distance = 40;
@@ -250,7 +250,6 @@ export class WeaponSystem {
     }
     for (let i = this.booms.length - 1; i >= 0 && n < this.lightPool.length; i--) {
       const l = this.lightPool[n++];
-      l.visible = true;
       l.color.setHex(0xbfefff);
       l.intensity = 40;
       l.distance = 46;
@@ -259,14 +258,12 @@ export class WeaponSystem {
     for (const b of this.boltList) {
       if (n >= this.lightPool.length) break;
       const l = this.lightPool[n++];
-      l.visible = true;
       l.color.setHex(0x66f0ff);
       l.intensity = 16;
       l.distance = 30;
       l.position.copy(b.mesh.position);
     }
     for (; n < this.lightPool.length; n++) {
-      this.lightPool[n].visible = false;
       this.lightPool[n].intensity = 0;
     }
   }
