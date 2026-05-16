@@ -30,7 +30,7 @@ interface Door {
   collider: RAPIER.Collider;
   baseY: number;
   t: number; // 0 closed .. 1 open
-  away: boolean; // collider currently moved out of the way
+  solid: boolean; // collider currently enabled
 }
 
 /**
@@ -58,18 +58,19 @@ export class Doors {
       mesh.position.set(def.pos[0], def.pos[1], def.pos[2]);
       this.group.add(mesh);
 
+      // Body carries the door position; opening just disables the
+      // collider (Collider.setTranslation is ignored when parented).
       const body = this.world.createRigidBody(
-        RAPIER.RigidBodyDesc.fixed(),
+        RAPIER.RigidBodyDesc.fixed().setTranslation(
+          def.pos[0],
+          def.pos[1],
+          def.pos[2],
+        ),
       );
       const collider = this.world.createCollider(
         RAPIER.ColliderDesc.cuboid(sx / 2, sy / 2, sz / 2),
         body,
       );
-      collider.setTranslation({
-        x: def.pos[0],
-        y: def.pos[1],
-        z: def.pos[2],
-      });
 
       this.doors.push({
         def,
@@ -77,7 +78,7 @@ export class Doors {
         collider,
         baseY: def.pos[1],
         t: 0,
-        away: false,
+        solid: true,
       });
     }
   }
@@ -94,19 +95,17 @@ export class Doors {
         playerPos.distanceTo(d.mesh.position) < OPEN_DIST + d.def.size[1];
       const target = unlocked && near ? 1 : 0;
 
-      d.t += Math.sign(target - d.t) * Math.min(SPEED * dt, Math.abs(target - d.t));
+      d.t +=
+        Math.sign(target - d.t) *
+        Math.min(SPEED * dt, Math.abs(target - d.t));
 
       // Slide up into the ceiling.
       d.mesh.position.y = d.baseY + d.t * d.def.size[1];
 
-      const shouldBeAway = d.t > 0.55;
-      if (shouldBeAway !== d.away) {
-        d.away = shouldBeAway;
-        d.collider.setTranslation({
-          x: d.def.pos[0],
-          y: shouldBeAway ? d.def.pos[1] - 10000 : d.def.pos[1],
-          z: d.def.pos[2],
-        });
+      const solid = d.t < 0.55;
+      if (solid !== d.solid) {
+        d.solid = solid;
+        d.collider.setEnabled(solid);
       }
     }
   }
