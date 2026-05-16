@@ -5,7 +5,7 @@ import { MenuState } from "./MenuState";
 import { PhysicsWorld, RAPIER } from "../physics/Physics";
 import { Level } from "../world/Level";
 import { Ship } from "../world/Ship";
-import { WeaponSystem } from "../world/Weapons";
+import { WeaponSystem, WEAPON_NAME } from "../world/Weapons";
 import { EnemySwarm, difficultyConfig } from "../world/Enemies";
 import { PickupField, type PickupKind } from "../world/Pickups";
 import { DeathFx } from "../world/DeathFx";
@@ -172,7 +172,7 @@ export class PlayState implements GameState {
         <div class="hud__bar"><div class="hud__bar-fill hud__bar-fill--shield" id="cf-shield"></div></div>
       </div>
       <div class="hud__weapon">
-        <div class="hud__weapon-name">LASER L<span id="cf-laser">1</span> &middot; RKT <span id="cf-rkt">0</span></div>
+        <div class="hud__weapon-name"><span id="cf-wpn">LASER</span> <span id="cf-wammo"></span></div>
         <div class="hud__energy"><div class="hud__energy-fill" id="cf-energy"></div></div>
       </div>
     `;
@@ -183,8 +183,8 @@ export class PlayState implements GameState {
     this.enemyEl = this.root.querySelector<HTMLElement>("#cf-enemies")!;
     this.hullEl = this.root.querySelector<HTMLElement>("#cf-hull")!;
     this.shieldEl = this.root.querySelector<HTMLElement>("#cf-shield")!;
-    this.rktEl = this.root.querySelector<HTMLElement>("#cf-rkt")!;
-    this.laserEl = this.root.querySelector<HTMLElement>("#cf-laser")!;
+    this.rktEl = this.root.querySelector<HTMLElement>("#cf-wpn")!;
+    this.laserEl = this.root.querySelector<HTMLElement>("#cf-wammo")!;
     this.factoryEl = this.root.querySelector<HTMLElement>("#cf-factories")!;
     this.flashEl = this.root.querySelector<HTMLElement>("#cf-flash")!;
     this.pickupEl = this.root.querySelector<HTMLElement>("#cf-pickup")!;
@@ -331,20 +331,19 @@ export class PlayState implements GameState {
 
       this.doors.update(dt, this.ship.position, this.keys);
 
+      // Weapon selection: 1-5 primary, 0 rockets.
+      for (let s = 0; s <= 5; s++) {
+        if (this.game.input.isDown(`Digit${s}`)) this.weapons.selectSlot(s);
+      }
+
       this.tmpFwd.set(0, 0, -1).applyQuaternion(this.ship.quaternion);
       this.tmpRight.set(1, 0, 0).applyQuaternion(this.ship.quaternion);
-      if (this.game.input.isMouseDown(0)) {
-        if (
-          this.weapons.tryFire(this.ship.position, this.tmpFwd, this.tmpRight)
-        ) {
-          this.game.sfx.laser();
-        }
-      }
-      if (this.game.input.isMouseDown(2)) {
-        if (this.weapons.tryFireRocket(this.ship.position, this.tmpFwd)) {
-          this.game.sfx.rocket();
-        }
-      }
+      this.weapons.fire(
+        this.game.input.isMouseDown(0),
+        this.ship.position,
+        this.tmpFwd,
+        this.tmpRight,
+      );
 
       this.weapons.update(dt);
       this.enemies.update(dt, this.ship.position, this.weapons);
@@ -428,8 +427,17 @@ export class PlayState implements GameState {
         key(this.keys.yellow, "#ffd23a", "Y");
       this.hullEl.style.width = `${Math.max(0, (this.hull / MAX_HULL) * 100).toFixed(0)}%`;
       this.shieldEl.style.width = `${((this.shield / MAX_SHIELD) * 100).toFixed(0)}%`;
-      this.rktEl.textContent = this.weapons.rocketAmmo.toFixed(0);
-      this.laserEl.textContent = this.weapons.laserLevel.toFixed(0);
+      const wp = this.weapons.current;
+      this.rktEl.textContent =
+        wp === "laser" || wp === "superlaser"
+          ? `${WEAPON_NAME[wp]} L${this.weapons.laserLevel}`
+          : WEAPON_NAME[wp];
+      this.laserEl.textContent =
+        wp === "rockets"
+          ? `x${this.weapons.rocketAmmo}`
+          : wp === "vulcan"
+            ? `x${this.weapons.vulcanAmmo}`
+            : "";
       const e = this.weapons.energy01;
       this.energyEl.style.width = `${(e * 100).toFixed(0)}%`;
       this.energyEl.classList.toggle("hud__energy-fill--low", e < 0.25);

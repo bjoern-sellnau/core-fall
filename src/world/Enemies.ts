@@ -1,12 +1,7 @@
 import * as THREE from "three";
 import type { Sfx } from "../audio/Sfx";
 import { RAPIER } from "../physics/Physics";
-import {
-  BOLT_SPEED,
-  type Bolt,
-  type Rocket,
-  type WeaponSystem,
-} from "./Weapons";
+import { type Bolt, type Rocket, type WeaponSystem } from "./Weapons";
 
 const DRONE_RADIUS = 2.0;
 const SHIP_RADIUS = 2.0;
@@ -36,11 +31,11 @@ export interface DiffConfig {
 }
 
 const TABLE: Record<number, DiffConfig> = {
-  1: { droneHp: 1, enemyDmg: 7, factoryInterval: 9, maxDrones: 6, factoryHp: 8, initialFrac: 0.5 },
-  2: { droneHp: 2, enemyDmg: 10, factoryInterval: 7, maxDrones: 9, factoryHp: 10, initialFrac: 0.7 },
-  3: { droneHp: 2, enemyDmg: 13, factoryInterval: 5.5, maxDrones: 12, factoryHp: 12, initialFrac: 0.85 },
-  4: { droneHp: 3, enemyDmg: 17, factoryInterval: 4.5, maxDrones: 15, factoryHp: 14, initialFrac: 1 },
-  5: { droneHp: 3, enemyDmg: 22, factoryInterval: 3.5, maxDrones: 18, factoryHp: 16, initialFrac: 1 },
+  1: { droneHp: 1, enemyDmg: 7, factoryInterval: 16, maxDrones: 6, factoryHp: 8, initialFrac: 0.5 },
+  2: { droneHp: 2, enemyDmg: 10, factoryInterval: 11, maxDrones: 9, factoryHp: 10, initialFrac: 0.7 },
+  3: { droneHp: 2, enemyDmg: 13, factoryInterval: 7, maxDrones: 13, factoryHp: 12, initialFrac: 0.85 },
+  4: { droneHp: 3, enemyDmg: 17, factoryInterval: 4, maxDrones: 17, factoryHp: 15, initialFrac: 1 },
+  5: { droneHp: 4, enemyDmg: 23, factoryInterval: 2.2, maxDrones: 22, factoryHp: 18, initialFrac: 1 },
 };
 
 export function difficultyConfig(level: number): DiffConfig {
@@ -408,13 +403,13 @@ export class EnemySwarm {
   ) {
     for (const b of bolts) {
       this.segB.copy(b.mesh.position);
-      this.segA.copy(b.mesh.position).addScaledVector(b.dir, -BOLT_SPEED * dt);
+      this.segA.copy(b.mesh.position).addScaledVector(b.dir, -b.speed * dt);
       if (
         distToSeg(dr.mesh.position, this.segA, this.segB) <
         DRONE_RADIUS + 0.4
       ) {
         weapons.kill(b);
-        dr.hp -= 1;
+        dr.hp -= b.damage;
         if (dr.hp <= 0) {
           dr.dead = true;
           this.explode(dr.mesh.position, 1);
@@ -455,10 +450,10 @@ export class EnemySwarm {
   ) {
     for (const b of bolts) {
       this.segB.copy(b.mesh.position);
-      this.segA.copy(b.mesh.position).addScaledVector(b.dir, -BOLT_SPEED * dt);
+      this.segA.copy(b.mesh.position).addScaledVector(b.dir, -b.speed * dt);
       if (distToSeg(f.pos, this.segA, this.segB) < FACTORY_RADIUS) {
         weapons.kill(b);
-        f.hp -= 1;
+        f.hp -= b.damage;
         if (f.hp <= 0) {
           f.dead = true;
           this.explode(f.pos, 2.2);

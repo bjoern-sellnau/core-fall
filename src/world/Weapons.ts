@@ -2,23 +2,45 @@ import * as THREE from "three";
 import { RAPIER } from "../physics/Physics";
 import type { Sfx } from "../audio/Sfx";
 
-export const BOLT_SPEED = 150; // units / s
 export const ROCKET_SPEED = 85;
-const BOLT_LIFETIME = 2.4;
 const ROCKET_LIFETIME = 4;
-const FIRE_INTERVAL = 0.13;
 const ROCKET_INTERVAL = 0.6;
 const MAX_ENERGY = 100;
-const SHOT_COST = 9;
-const RECHARGE = 30;
-const CANNON_SPREAD = 0.7;
-const MUZZLE_FORWARD = 2.2;
-const MAX_LASER_LEVEL = 3;
+const RECHARGE = 32;
+const MUZZLE = 2.2;
+const MAX_LASER_LEVEL = 4;
+
+export type Weapon =
+  | "laser"
+  | "superlaser"
+  | "vulcan"
+  | "plasma"
+  | "fusion"
+  | "rockets";
+
+export const PRIMARY: Weapon[] = [
+  "laser",
+  "superlaser",
+  "vulcan",
+  "plasma",
+  "fusion",
+];
+
+export const WEAPON_NAME: Record<Weapon, string> = {
+  laser: "LASER",
+  superlaser: "SUPER LASER",
+  vulcan: "VULCAN",
+  plasma: "PLASMA",
+  fusion: "FUSION",
+  rockets: "ROCKETS",
+};
 
 export interface Bolt {
   mesh: THREE.Mesh;
   dir: THREE.Vector3;
   life: number;
+  speed: number;
+  damage: number;
 }
 
 export interface Rocket {
@@ -36,8 +58,9 @@ interface Boom {
 }
 
 /**
- * Player weapons: a levelled twin-laser (energy budget) plus rockets
- * (ammo). Projectiles are swept against the Rapier world each frame.
+ * Multi-weapon system, Descent style. Number keys select the active
+ * weapon (1-5 primary, 0 rockets); the fire button fires whatever is
+ * selected. Primaries use the energy tank (Vulcan uses ammo).
  */
 export class WeaponSystem {
   readonly group = new THREE.Group();
@@ -45,21 +68,33 @@ export class WeaponSystem {
   private boltList: Bolt[] = [];
   private rocketList: Rocket[] = [];
   private booms: Boom[] = [];
+
   private cooldown = 0;
   private rocketCool = 0;
   private energy = MAX_ENERGY;
+  private charge = 0; // fusion charge
+  private prevFiring = false;
 
   private laser = 1;
   private rockets = 0;
+  private vulcan = 250;
+  private selected: Weapon = "laser";
 
-  private readonly boltGeo = new THREE.BoxGeometry(0.16, 0.16, 2.0);
-  private readonly boltMat = new THREE.MeshBasicMaterial({ color: 0x66f0ff });
+  private readonly geoBolt = new THREE.BoxGeometry(0.16, 0.16, 2.0);
+  private readonly geoSlug = new THREE.BoxGeometry(0.18, 0.18, 0.6);
+  private readonly geoBall = new THREE.SphereGeometry(0.5, 10, 10);
+  private readonly geoFusion = new THREE.SphereGeometry(0.9, 12, 12);
   private readonly rocketGeo = new THREE.CapsuleGeometry(0.32, 1.1, 4, 8);
-  private readonly rocketMat = new THREE.MeshBasicMaterial({ color: 0xffae50 });
   private readonly boomGeo = new THREE.SphereGeometry(0.5, 10, 10);
+  private readonly mats: Record<string, THREE.MeshBasicMaterial> = {
+    laser: new THREE.MeshBasicMaterial({ color: 0x66f0ff }),
+    superlaser: new THREE.MeshBasicMaterial({ color: 0xff4d4d }),
+    vulcan: new THREE.MeshBasicMaterial({ color: 0xffe06a }),
+    plasma: new THREE.MeshBasicMaterial({ color: 0x66ff88 }),
+    fusion: new THREE.MeshBasicMaterial({ color: 0xc8a0ff }),
+    rocket: new THREE.MeshBasicMaterial({ color: 0xffae50 }),
+  };
   private readonly zAxis = new THREE.Vector3(0, 0, 1);
-
-  // Pooled lights so projectiles illuminate dark rooms as they fly.
   private readonly lightPool: THREE.PointLight[] = [];
 
   constructor(
@@ -67,8 +102,6 @@ export class WeaponSystem {
     private readonly excludeBody: RAPIER.RigidBody,
     private readonly sfx: Sfx,
   ) {
-    // Always-present (constant count → no shader recompiles); unused
-    // lights just sit at intensity 0.
     for (let i = 0; i < 6; i++) {
       const l = new THREE.PointLight(0x66f0ff, 0, 34, 1.8);
       this.group.add(l);
@@ -76,14 +109,23 @@ export class WeaponSystem {
     }
   }
 
-  get energy01(): number {
+  get energy01() {
     return this.energy / MAX_ENERGY;
   }
-  get laserLevel(): number {
+  get laserLevel() {
     return this.laser;
   }
-  get rocketAmmo(): number {
+  get rocketAmmo() {
     return this.rockets;
+  }
+  get vulcanAmmo() {
+    return this.vulcan;
+  }
+  get current() {
+    return this.selected;
+  }
+  get chargeFrac() {
+    return this.charge / 1.4;
   }
   get bolts(): readonly Bolt[] {
     return this.boltList;
@@ -98,13 +140,22 @@ export class WeaponSystem {
   addRockets(n: number) {
     this.rockets += n;
   }
+  addVulcan(n: number) {
+    this.vulcan += n;
+  }
+
+  /** Slot 1-5 → primary, 0 → rockets. */
+  selectSlot(slot: number) {
+    if (slot === 0) this.selected = "rockets";
+    else if (slot >= 1 && slot <= PRIMARY.length)
+      this.selected = PRIMARY[slot - 1];
+  }
 
   kill(b: Bolt) {
     const i = this.boltList.indexOf(b);
     if (i >= 0) this.removeBolt(i);
   }
 
-  /** Detonate a rocket externally (enemy splash). */
   detonateRocket(r: Rocket) {
     const i = this.rocketList.indexOf(r);
     if (i < 0) return;
@@ -113,51 +164,154 @@ export class WeaponSystem {
     this.removeRocket(i);
   }
 
-  /** Returns true on the frame a laser volley actually fires. */
-  tryFire(
+  /** Drive firing each frame from the held fire button. */
+  fire(firing: boolean, pos: THREE.Vector3, fwd: THREE.Vector3, right: THREE.Vector3) {
+    const released = this.prevFiring && !firing;
+
+    if (this.selected === "fusion") {
+      if (firing && this.energy > 4) {
+        this.charge = Math.min(1.4, this.charge + 0.016);
+      } else if ((released || this.charge >= 1.4) && this.charge > 0.2) {
+        const dmg = 4 + this.charge * 9;
+        this.energy = Math.max(0, this.energy - (10 + this.charge * 20));
+        this.spawn(pos, fwd, 0, "fusion", {
+          speed: 95,
+          life: 2.6,
+          damage: dmg,
+          scale: 1 + this.charge,
+        });
+        this.sfx.laser();
+        this.charge = 0;
+      }
+      this.prevFiring = firing;
+      return;
+    }
+    this.charge = 0;
+
+    if (firing && this.cooldown <= 0) this.fireSelected(pos, fwd, right);
+    this.prevFiring = firing;
+  }
+
+  private fireSelected(
     pos: THREE.Vector3,
     fwd: THREE.Vector3,
     right: THREE.Vector3,
-  ): boolean {
-    const sides =
-      this.laser >= 3
-        ? [-1.4, -0.5, 0.5, 1.4]
-        : this.laser === 2
-          ? [-1, 0, 1]
-          : [-1, 1];
-    const cost = SHOT_COST + (sides.length - 2) * 2;
-    if (this.cooldown > 0 || this.energy < cost) return false;
-    this.cooldown = FIRE_INTERVAL;
-    this.energy -= cost;
-
-    const q = new THREE.Quaternion().setFromUnitVectors(this.zAxis, fwd);
-    for (const side of sides) {
-      const origin = pos
-        .clone()
-        .addScaledVector(fwd, MUZZLE_FORWARD)
-        .addScaledVector(right, side * CANNON_SPREAD);
-      const mesh = new THREE.Mesh(this.boltGeo, this.boltMat);
-      mesh.position.copy(origin);
-      mesh.quaternion.copy(q);
-      this.group.add(mesh);
-      this.boltList.push({ mesh, dir: fwd.clone(), life: BOLT_LIFETIME });
+  ) {
+    switch (this.selected) {
+      case "laser":
+      case "superlaser": {
+        const sup = this.selected === "superlaser";
+        const cost = (sup ? 6 : 4) + (this.laser - 1) * 1.5;
+        if (this.energy < cost) return;
+        const sides =
+          this.laser >= 4
+            ? [-1.4, -0.5, 0.5, 1.4]
+            : this.laser === 3
+              ? [-1, 0, 1]
+              : this.laser >= 2
+                ? [-0.8, 0.8]
+                : [0];
+        for (const s of sides) {
+          this.spawn(pos, fwd, s, this.selected, {
+            speed: sup ? 200 : 160,
+            life: 2.2,
+            damage: (sup ? 2.4 : 1.2) + (this.laser - 1) * 0.6,
+            right,
+          });
+        }
+        this.energy -= cost;
+        this.cooldown = sup ? 0.09 : 0.13;
+        this.sfx.laser();
+        break;
+      }
+      case "vulcan": {
+        if (this.vulcan <= 0) return;
+        this.vulcan -= 1;
+        const j = () => (Math.random() - 0.5) * 0.06;
+        const d = fwd.clone();
+        d.x += j();
+        d.y += j();
+        d.z += j();
+        d.normalize();
+        this.spawn(pos, d, 0, "vulcan", {
+          speed: 220,
+          life: 1.6,
+          damage: 1,
+        });
+        this.cooldown = 0.06;
+        this.sfx.impact();
+        break;
+      }
+      case "plasma": {
+        if (this.energy < 7) return;
+        this.energy -= 7;
+        for (const s of [-0.5, 0.5]) {
+          this.spawn(pos, fwd, s, "plasma", {
+            speed: 130,
+            life: 2.0,
+            damage: 2.2,
+            right,
+          });
+        }
+        this.cooldown = 0.08;
+        this.sfx.laser();
+        break;
+      }
+      case "rockets": {
+        if (this.rocketCool > 0 || this.rockets <= 0) return;
+        this.rockets -= 1;
+        this.rocketCool = ROCKET_INTERVAL;
+        this.cooldown = ROCKET_INTERVAL;
+        const q = new THREE.Quaternion().setFromUnitVectors(this.zAxis, fwd);
+        const mesh = new THREE.Mesh(this.rocketGeo, this.mats.rocket);
+        mesh.position.copy(pos).addScaledVector(fwd, MUZZLE);
+        mesh.quaternion.copy(q);
+        this.group.add(mesh);
+        this.rocketList.push({
+          mesh,
+          dir: fwd.clone(),
+          life: ROCKET_LIFETIME,
+        });
+        this.sfx.rocket();
+        break;
+      }
     }
-    return true;
   }
 
-  /** Returns true on the frame a rocket launches. */
-  tryFireRocket(pos: THREE.Vector3, fwd: THREE.Vector3): boolean {
-    if (this.rocketCool > 0 || this.rockets <= 0) return false;
-    this.rocketCool = ROCKET_INTERVAL;
-    this.rockets -= 1;
-
-    const q = new THREE.Quaternion().setFromUnitVectors(this.zAxis, fwd);
-    const mesh = new THREE.Mesh(this.rocketGeo, this.rocketMat);
-    mesh.position.copy(pos).addScaledVector(fwd, MUZZLE_FORWARD);
-    mesh.quaternion.copy(q);
+  private spawn(
+    pos: THREE.Vector3,
+    dir: THREE.Vector3,
+    side: number,
+    kind: string,
+    o: {
+      speed: number;
+      life: number;
+      damage: number;
+      right?: THREE.Vector3;
+      scale?: number;
+    },
+  ) {
+    const geo =
+      kind === "plasma"
+        ? this.geoBall
+        : kind === "fusion"
+          ? this.geoFusion
+          : kind === "vulcan"
+            ? this.geoSlug
+            : this.geoBolt;
+    const mesh = new THREE.Mesh(geo, this.mats[kind]);
+    mesh.position.copy(pos).addScaledVector(dir, MUZZLE);
+    if (side !== 0 && o.right) mesh.position.addScaledVector(o.right, side * 0.7);
+    mesh.quaternion.setFromUnitVectors(this.zAxis, dir);
+    if (o.scale) mesh.scale.setScalar(o.scale);
     this.group.add(mesh);
-    this.rocketList.push({ mesh, dir: fwd.clone(), life: ROCKET_LIFETIME });
-    return true;
+    this.boltList.push({
+      mesh,
+      dir: dir.clone(),
+      life: o.life,
+      speed: o.speed,
+      damage: o.damage,
+    });
   }
 
   update(dt: number) {
@@ -168,7 +322,7 @@ export class WeaponSystem {
     for (let i = this.boltList.length - 1; i >= 0; i--) {
       const b = this.boltList[i];
       b.life -= dt;
-      const step = BOLT_SPEED * dt;
+      const step = b.speed * dt;
       const hit = this.world.castRay(
         new RAPIER.Ray(b.mesh.position, b.dir),
         step,
@@ -237,7 +391,6 @@ export class WeaponSystem {
     this.updateLights();
   }
 
-  /** Park pool lights on the newest projectiles + active blasts. */
   private updateLights() {
     let n = 0;
     for (const r of this.rocketList) {
@@ -258,14 +411,12 @@ export class WeaponSystem {
     for (const b of this.boltList) {
       if (n >= this.lightPool.length) break;
       const l = this.lightPool[n++];
-      l.color.setHex(0x66f0ff);
+      l.color.setHex(0x88e0ff);
       l.intensity = 16;
       l.distance = 30;
       l.position.copy(b.mesh.position);
     }
-    for (; n < this.lightPool.length; n++) {
-      this.lightPool[n].intensity = 0;
-    }
+    for (; n < this.lightPool.length; n++) this.lightPool[n].intensity = 0;
   }
 
   private removeBolt(i: number) {
@@ -298,12 +449,13 @@ export class WeaponSystem {
   }
 
   dispose() {
-    this.boltGeo.dispose();
-    this.boltMat.dispose();
+    this.geoBolt.dispose();
+    this.geoSlug.dispose();
+    this.geoBall.dispose();
+    this.geoFusion.dispose();
     this.rocketGeo.dispose();
-    this.rocketMat.dispose();
     this.boomGeo.dispose();
-    for (const bm of this.booms) bm.mat.dispose();
+    for (const k of Object.keys(this.mats)) this.mats[k].dispose();
     this.boltList = [];
     this.rocketList = [];
     this.booms = [];

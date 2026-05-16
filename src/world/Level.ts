@@ -107,6 +107,9 @@ export class Level {
       box(0, -10, -430, 30, 18, 30, 14), // 18 room
       box(0, -8, -450, 10, 12, 24, 6), // 19 corridor
       box(0, -6, -470, 48, 32, 48, 0, true), // 20 reactor room
+      box(0, 18, -118, 14, 22, 14, 9), // 21 vertical alcove (off 4)
+      box(-26, -10, -244, 24, 16, 20, 12), // 22 -X branch room (off 10)
+      box(28, -22, -310, 22, 16, 20, 0), // 23 DARK side room (off 12)
     ];
 
     const merged: number[] = [];
@@ -244,7 +247,7 @@ export class Level {
         (boxes[i].min[2] + boxes[i].max[2]) / 2,
       );
     for (const i of [2, 6, 10, 14, 17]) this.factorySpawns.push(center(i));
-    for (const i of [1, 3, 5, 11, 13, 15, 18]) {
+    for (const i of [1, 3, 5, 11, 13, 15, 18, 21, 22, 23]) {
       this.pickupSpawns.push(center(i).add(new THREE.Vector3(0, 2, 0)));
     }
     // Access keys, each on the main path before its locked door.
