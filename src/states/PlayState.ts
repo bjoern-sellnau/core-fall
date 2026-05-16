@@ -2,7 +2,7 @@ import * as THREE from "three";
 import type { Game } from "../engine/Game";
 import type { GameState } from "./GameState";
 import { MenuState } from "./MenuState";
-import { PhysicsWorld } from "../physics/Physics";
+import { PhysicsWorld, RAPIER } from "../physics/Physics";
 import { Level } from "../world/Level";
 import { Ship } from "../world/Ship";
 import { WeaponSystem } from "../world/Weapons";
@@ -365,14 +365,29 @@ export class PlayState implements GameState {
     this.level.update(sdt);
     this.deathFx.update(sdt);
 
-    // Cinematic third-person orbit around the wreck.
+    // Cinematic third-person orbit, but keep the camera inside the
+    // room: raycast from the wreck and stop short of any wall.
     this.deathTimer += dt;
     const ang = this.deathTimer * 0.18;
-    this.camera.position.set(
-      this.deathPos.x + Math.cos(ang) * 17,
-      this.deathPos.y + 6,
-      this.deathPos.z + Math.sin(ang) * 17,
+    const off = new THREE.Vector3(
+      Math.cos(ang) * 13,
+      5,
+      Math.sin(ang) * 13,
     );
+    const want = off.length();
+    const dir = off.clone().multiplyScalar(1 / want);
+    let dist = want;
+    const hit = this.physics.world.castRay(
+      new RAPIER.Ray(this.deathPos, dir),
+      want,
+      true,
+      undefined,
+      undefined,
+      undefined,
+      this.ship.rigidBody,
+    );
+    if (hit) dist = Math.max(3, hit.timeOfImpact - 1.5);
+    this.camera.position.copy(this.deathPos).addScaledVector(dir, dist);
     this.camera.lookAt(this.deathPos);
 
     const space = this.game.input.isDown("Space");
