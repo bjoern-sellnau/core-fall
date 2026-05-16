@@ -67,6 +67,11 @@ export class MenuState implements GameState {
       <p class="menu__subtitle">DESCENT INTO THE CORE</p>
       <div class="menu__diff-label">DIFFICULTY</div>
       <div class="menu__diff">${diffBtns}</div>
+      <div class="menu__diff-label">MENU THEME</div>
+      <div class="menu__diff" id="cf-theme">
+        <button class="menu__diff-btn" data-t="2">V2 POP</button>
+        <button class="menu__diff-btn" data-t="1">V1 CALM</button>
+      </div>
       <div class="menu__buttons">
         <button class="menu__btn" id="cf-start">START MISSION</button>
       </div>
@@ -92,6 +97,28 @@ export class MenuState implements GameState {
         paint();
       };
     });
+
+    const themeBtns = this.root.querySelectorAll<HTMLButtonElement>(
+      "#cf-theme .menu__diff-btn",
+    );
+    const paintTheme = () => {
+      themeBtns.forEach((b) => {
+        const on = Number(b.dataset.t) === this.game.music.menuTheme;
+        b.classList.toggle("menu__diff-btn--on", on);
+      });
+    };
+    themeBtns.forEach((b) => {
+      b.onclick = () => {
+        // Clicking is a gesture: make sure audio is running, then
+        // switch the menu track so it can be previewed right away.
+        this.game.music.start();
+        this.game.sfx.start();
+        this.game.music.setScene("menu");
+        this.game.music.setMenuTheme(Number(b.dataset.t) as 1 | 2);
+        paintTheme();
+      };
+    });
+    paintTheme();
     paint();
 
     const start = () => {

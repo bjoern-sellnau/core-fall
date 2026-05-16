@@ -48,6 +48,16 @@ const M_B: Bar = {
   lead: [72, null, null, null, null, null, 67, null, null, null, null, null, 71, null, null, null],
 };
 
+// --- MENU V2: poppy, upbeat (default) ---
+const P_A: Bar = {
+  bass: [36, null, 36, null, 43, null, 36, null, 41, null, 41, null, 43, null, 43, null],
+  lead: [72, 76, 79, 76, 81, 79, 76, 72, 74, 76, 79, 81, 79, 76, 74, 72],
+};
+const P_B: Bar = {
+  bass: [41, null, 41, null, 36, null, 36, null, 43, null, 43, null, 45, null, 43, null],
+  lead: [81, 79, 76, 79, 72, 74, 76, 79, 84, 81, 79, 76, 79, 76, 74, 72],
+};
+
 // --- DEATH: very slow, dark, mournful ---
 const D_A: Bar = {
   bass: [21, null, null, null, null, null, null, null, 24, null, null, null, null, null, null, null],
@@ -66,13 +76,21 @@ const GAME: SceneCfg = {
   drums: true,
   pad: false,
 };
-const MENU: SceneCfg = {
+const MENU_V1: SceneCfg = {
   bpm: 84,
   bars: [M_A, M_B],
   arr: [0, 1, 0, 1],
   gain: 0.2,
   drums: false,
   pad: true,
+};
+const MENU_V2: SceneCfg = {
+  bpm: 120,
+  bars: [P_A, P_B],
+  arr: [0, 0, 1, 0],
+  gain: 0.22,
+  drums: true,
+  pad: false,
 };
 const DEATH: SceneCfg = {
   bpm: 52,
@@ -97,7 +115,8 @@ export class MusicEngine {
 
   private intensity = 0;
   private intensityTarget = 0;
-  private cfg: SceneCfg = MENU;
+  private cfg: SceneCfg = MENU_V2;
+  private menuVariant: 1 | 2 = 2;
 
   private readonly lookahead = 0.1;
   private readonly tick = 25;
@@ -120,15 +139,38 @@ export class MusicEngine {
     }
   }
 
+  private menuCfg() {
+    return this.menuVariant === 2 ? MENU_V2 : MENU_V1;
+  }
+
   /** Switch between the menu, game and death tracks. */
   setScene(scene: "menu" | "game" | "death") {
     const next =
-      scene === "game" ? GAME : scene === "death" ? DEATH : MENU;
+      scene === "game"
+        ? GAME
+        : scene === "death"
+          ? DEATH
+          : this.menuCfg();
     if (next === this.cfg) return;
     this.cfg = next;
     this.step = 0;
     this.barPos = 0;
     if (scene !== "game") this.intensityTarget = 0;
+  }
+
+  get menuTheme(): 1 | 2 {
+    return this.menuVariant;
+  }
+
+  /** Pick the menu theme; if a menu track is playing, switch live. */
+  setMenuTheme(v: 1 | 2) {
+    if (this.menuVariant === v) return;
+    this.menuVariant = v;
+    if (this.cfg === MENU_V1 || this.cfg === MENU_V2) {
+      this.cfg = this.menuCfg();
+      this.step = 0;
+      this.barPos = 0;
+    }
   }
 
   setIntensity(x: number) {
