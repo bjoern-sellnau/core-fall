@@ -54,6 +54,15 @@ export class Level {
   readonly spawnQuaternion: THREE.Quaternion;
   readonly corePosition: THREE.Vector3;
   readonly enemySpawns: THREE.Vector3[] = [];
+  readonly pickupSpawns: THREE.Vector3[] = [
+    new THREE.Vector3(0, 3, -32),
+    new THREE.Vector3(7, 4, -58),
+    new THREE.Vector3(46, 3, -118),
+    new THREE.Vector3(-6, 2, -118),
+    new THREE.Vector3(0, -3, -186),
+    new THREE.Vector3(0, -3, -214),
+    new THREE.Vector3(14, 6, -250),
+  ];
 
   private reactor: THREE.Mesh;
   private reactorLight: THREE.PointLight;
@@ -140,10 +149,10 @@ export class Level {
           b.max[2] - b.min[2],
         );
         const lamp = new THREE.PointLight(
-          b.warm ? 0xff9a3a : 0x57e0ff,
-          b.light,
-          span * 1.4,
-          2,
+          b.warm ? 0xffb060 : 0x8fe8ff,
+          b.light * 2.4,
+          span * 1.9,
+          1.7,
         );
         lamp.position.set(cx, cy, cz);
         this.group.add(lamp);
@@ -159,11 +168,11 @@ export class Level {
     geo.computeVertexNormals();
 
     const mat = new THREE.MeshStandardMaterial({
-      color: 0x1d2733,
-      metalness: 0.7,
-      roughness: 0.6,
+      color: 0x36475a,
+      metalness: 0.55,
+      roughness: 0.65,
       side: THREE.DoubleSide,
-      emissive: 0x070f18,
+      emissive: 0x16242f,
     });
     this.group.add(new THREE.Mesh(geo, mat));
 
@@ -210,7 +219,9 @@ export class Level {
     this.reactorLight.position.copy(Level.CORE);
     this.group.add(this.reactorLight);
 
-    this.group.add(new THREE.AmbientLight(0x16242f, 1.0));
+    this.group.add(new THREE.AmbientLight(0x6f86a0, 2.1));
+    const fill = new THREE.HemisphereLight(0x9fc4e8, 0x202830, 1.4);
+    this.group.add(fill);
 
     this.corePosition = Level.CORE.clone();
 

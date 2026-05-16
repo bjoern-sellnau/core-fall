@@ -104,6 +104,80 @@ export class Sfx {
     ping.stop(t + 0.1);
   }
 
+  /** Bright rising two-tone confirm for collecting a pickup. */
+  pickup() {
+    if (!this.ctx) return;
+    const ctx = this.ctx;
+    const t = ctx.currentTime;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.3, t + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.22);
+    g.connect(this.master);
+
+    const o1 = ctx.createOscillator();
+    o1.type = "triangle";
+    o1.frequency.setValueAtTime(660, t);
+    o1.frequency.setValueAtTime(990, t + 0.08);
+    o1.connect(g);
+    o1.start(t);
+    o1.stop(t + 0.24);
+  }
+
+  /** Rocket launch whoosh. */
+  rocket() {
+    if (!this.ctx) return;
+    const ctx = this.ctx;
+    const t = ctx.currentTime;
+
+    const src = ctx.createBufferSource();
+    src.buffer = this.noise;
+
+    const bp = ctx.createBiquadFilter();
+    bp.type = "bandpass";
+    bp.frequency.setValueAtTime(500, t);
+    bp.frequency.exponentialRampToValueAtTime(2400, t + 0.25);
+    bp.Q.value = 0.9;
+
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.4, t + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.3);
+
+    src.connect(bp);
+    bp.connect(g);
+    g.connect(this.master);
+    src.start(t);
+    src.stop(t + 0.32);
+  }
+
+  /** Dull enemy plasma shot. */
+  enemyShot() {
+    if (!this.ctx) return;
+    const ctx = this.ctx;
+    const t = ctx.currentTime;
+
+    const osc = ctx.createOscillator();
+    osc.type = "sawtooth";
+    osc.frequency.setValueAtTime(420, t);
+    osc.frequency.exponentialRampToValueAtTime(120, t + 0.18);
+
+    const lp = ctx.createBiquadFilter();
+    lp.type = "lowpass";
+    lp.frequency.value = 1100;
+
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.26, t + 0.006);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.2);
+
+    osc.connect(lp);
+    lp.connect(g);
+    g.connect(this.master);
+    osc.start(t);
+    osc.stop(t + 0.22);
+  }
+
   /** Noisy boom with a low thump; scale ~1 default, larger = bigger. */
   explosion(scale = 1) {
     if (!this.ctx) return;

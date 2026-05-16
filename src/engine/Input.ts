@@ -15,8 +15,13 @@ export class Input {
     document.addEventListener("mousemove", this.onMouseMove);
     document.addEventListener("mousedown", this.onMouseDown);
     document.addEventListener("mouseup", this.onMouseUp);
+    document.addEventListener("contextmenu", this.onContextMenu);
     document.addEventListener("pointerlockchange", this.onPointerLockChange);
   }
+
+  private onContextMenu = (e: MouseEvent) => {
+    e.preventDefault();
+  };
 
   private onKeyDown = (e: KeyboardEvent) => {
     this.keys.add(e.code);
@@ -82,6 +87,7 @@ export class Input {
     document.removeEventListener("mousemove", this.onMouseMove);
     document.removeEventListener("mousedown", this.onMouseDown);
     document.removeEventListener("mouseup", this.onMouseUp);
+    document.removeEventListener("contextmenu", this.onContextMenu);
     document.removeEventListener("pointerlockchange", this.onPointerLockChange);
   }
 }

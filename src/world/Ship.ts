@@ -63,6 +63,15 @@ export class Ship {
     return this.body;
   }
 
+  /** Reset to a spawn pose with zero velocity (used on death). */
+  respawn(pos: THREE.Vector3, quat: THREE.Quaternion) {
+    this.position.copy(pos);
+    this.quaternion.copy(quat);
+    this.velocity.set(0, 0, 0);
+    this.body.setNextKinematicTranslation(this.position);
+    this.body.setNextKinematicRotation(this.quaternion);
+  }
+
   update(dt: number, input: Input) {
     // --- Orientation: local-space pitch / yaw / roll ---
     const { dx, dy } = input.consumeMouse();

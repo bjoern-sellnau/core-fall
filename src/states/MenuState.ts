@@ -61,8 +61,8 @@ export class MenuState implements GameState {
         <button class="menu__btn" id="cf-start">START MISSION</button>
       </div>
       <div class="menu__controls">
-        <b>Mouse</b> aim &nbsp;|&nbsp; <b>LMB</b> fire &nbsp;|&nbsp; <b>W/S</b> thrust &nbsp;|&nbsp; <b>A/D</b> strafe<br />
-        <b>Space/C</b> up&middot;down &nbsp;|&nbsp; <b>Q/E</b> roll &nbsp;|&nbsp; <b>Shift</b> boost<br />
+        <b>Mouse</b> aim &nbsp;|&nbsp; <b>LMB</b> laser &nbsp;|&nbsp; <b>RMB</b> rocket &nbsp;|&nbsp; <b>W/S</b> thrust<br />
+        <b>A/D</b> strafe &nbsp;|&nbsp; <b>Space/C</b> up&middot;down &nbsp;|&nbsp; <b>Q/E</b> roll &nbsp;|&nbsp; <b>Shift</b> boost<br />
         <b>Esc</b> release mouse &nbsp;|&nbsp; <b>N</b> music on/off
       </div>
     `;
