@@ -150,6 +150,7 @@ export class PlayState implements GameState {
       this.game.sfx,
       difficultyConfig(this.game.difficulty),
       LEVELS[this.game.levelIndex].tier,
+      LEVELS[this.game.levelIndex].kinds,
     );
     this.enemies.spawn(
       this.level.enemySpawns,
@@ -596,8 +597,9 @@ export class PlayState implements GameState {
     this.pause.classList.add("hidden");
     this.winTimer += dt;
 
-    // Self-contained cinematic in open space: the ship flies straight
-    // out of the mine toward a fixed camera, mine exploding behind it.
+    // Self-contained cinematic in open space: the ship flies out of
+    // the mine while a trailing camera keeps it framed and pulls back,
+    // the mine exploding behind it.
     if (!this.winInit) {
       this.winInit = true;
       this.level.group.visible = false;
@@ -606,33 +608,38 @@ export class PlayState implements GameState {
       this.starfield.visible = true;
       this.deathFx.reset();
       this.ship.model.visible = true;
-      this.ship.model.rotation.set(0, Math.PI, 0); // nose toward camera
-      this.camera.position.set(0, 2.5, 26);
-      this.camera.lookAt(0, 0, -60);
+      this.ship.model.rotation.set(0, Math.PI, 0); // nose along +Z
     }
 
-    const z = -110 + (28 * this.winTimer + 7 * this.winTimer * this.winTimer);
+    // Ship flies forward (+Z) out into space.
+    const z = -30 + (24 * this.winTimer + 6 * this.winTimer * this.winTimer);
     this.ship.position.set(0, 0, z);
     this.ship.model.position.copy(this.ship.position);
     this.escapeLight.intensity = 190;
-    this.escapeLight.position.set(0, 4, z + 4);
+    this.escapeLight.position.set(0, 4, z + 3);
 
-    // Explosion chain trailing the ship, back toward the dying mine.
+    // Camera stays ahead of the ship and steadily pulls back, so the
+    // ship is always in frame with the mine detonating beyond it.
+    const gap = 15 + this.winTimer * 6;
+    this.camera.position.set(2, 3, z + gap);
+    this.camera.lookAt(this.ship.position);
+
+    // Explosion chain trailing behind the ship (toward the mine).
     this.deathFx.update(dt);
     this.winBoomTimer -= dt;
-    if (this.winBoomTimer <= 0 && this.winTimer < 6) {
-      this.winBoomTimer = 0.22;
+    if (this.winBoomTimer <= 0 && this.winTimer < 6.5) {
+      this.winBoomTimer = 0.2;
       const p = new THREE.Vector3(
         (Math.random() - 0.5) * 26,
         (Math.random() - 0.5) * 20,
-        z - 14 - Math.random() * 50,
+        z - 22 - Math.random() * 55,
       );
       this.deathFx.trigger(p, { laser: 0, rockets: 0 });
       this.game.sfx.explosion(2.6);
     }
 
     // Whiteout flash as the mine goes up.
-    const flash = Math.min(0.85, Math.max(0, (this.winTimer - 5) / 1.6));
+    const flash = Math.min(0.8, Math.max(0, (this.winTimer - 5.5) / 1.8));
     this.flashEl.style.background = "#dff0ff";
     this.flashEl.style.opacity = `${flash}`;
 

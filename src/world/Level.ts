@@ -44,8 +44,8 @@ function carve(r: Rect, h: Rect): Rect[] {
   return out;
 }
 
-/** Procedural grey panel/grid texture (no image assets needed). */
-function makeWallTexture(): THREE.CanvasTexture {
+/** Procedural grey wall texture; `style` gives each level a look. */
+function makeWallTexture(style: string): THREE.CanvasTexture {
   const s = 256;
   const cv = document.createElement("canvas");
   cv.width = s;
@@ -53,33 +53,93 @@ function makeWallTexture(): THREE.CanvasTexture {
   const g = cv.getContext("2d")!;
   g.fillStyle = "#8d949c";
   g.fillRect(0, 0, s, s);
-  // Speckle.
-  for (let i = 0; i < 2400; i++) {
-    const x = Math.random() * s;
-    const y = Math.random() * s;
+  for (let i = 0; i < 2200; i++) {
     g.fillStyle = `rgba(${Math.random() < 0.5 ? 255 : 0},${
       Math.random() < 0.5 ? 255 : 0
     },${Math.random() < 0.5 ? 255 : 0},0.04)`;
-    g.fillRect(x, y, 2, 2);
+    g.fillRect(Math.random() * s, Math.random() * s, 2, 2);
   }
-  // Panel seams + rivets.
-  g.strokeStyle = "rgba(20,24,28,0.55)";
-  g.lineWidth = 3;
-  for (let p = 0; p <= s; p += 64) {
-    g.beginPath();
-    g.moveTo(p, 0);
-    g.lineTo(p, s);
-    g.moveTo(0, p);
-    g.lineTo(s, p);
-    g.stroke();
-  }
-  g.fillStyle = "rgba(225,235,245,0.5)";
-  for (let x = 16; x < s; x += 64)
-    for (let y = 16; y < s; y += 64) {
+  const dark = "rgba(18,22,26,0.6)";
+  const lite = "rgba(228,238,248,0.5)";
+
+  if (style === "rock") {
+    for (let i = 0; i < 60; i++) {
+      g.fillStyle = `rgba(0,0,0,${0.04 + Math.random() * 0.08})`;
       g.beginPath();
-      g.arc(x, y, 2.4, 0, Math.PI * 2);
+      g.arc(
+        Math.random() * s,
+        Math.random() * s,
+        8 + Math.random() * 26,
+        0,
+        Math.PI * 2,
+      );
       g.fill();
     }
+  } else if (style === "circuit") {
+    g.strokeStyle = dark;
+    g.lineWidth = 2;
+    for (let i = 0; i < 22; i++) {
+      g.beginPath();
+      const y = Math.random() * s;
+      g.moveTo(0, y);
+      g.lineTo(s * (0.3 + Math.random() * 0.7), y);
+      g.lineTo(s * (0.3 + Math.random() * 0.7), Math.random() * s);
+      g.stroke();
+    }
+    g.fillStyle = lite;
+    for (let i = 0; i < 40; i++) {
+      g.fillRect(Math.random() * s, Math.random() * s, 4, 4);
+    }
+  } else if (style === "hex") {
+    g.strokeStyle = dark;
+    g.lineWidth = 2;
+    const r = 26;
+    for (let row = -1; row < s / (r * 1.5) + 1; row++) {
+      for (let col = -1; col < s / (r * 1.8) + 1; col++) {
+        const cx = col * r * 1.8 + (row % 2 ? r * 0.9 : 0);
+        const cy = row * r * 1.5;
+        g.beginPath();
+        for (let k = 0; k < 6; k++) {
+          const a = (Math.PI / 3) * k + Math.PI / 6;
+          const px = cx + Math.cos(a) * r;
+          const py = cy + Math.sin(a) * r;
+          k ? g.lineTo(px, py) : g.moveTo(px, py);
+        }
+        g.closePath();
+        g.stroke();
+      }
+    }
+  } else if (style === "tile") {
+    g.strokeStyle = dark;
+    g.lineWidth = 4;
+    for (let p = 0; p <= s; p += 32) {
+      g.beginPath();
+      g.moveTo(p, 0);
+      g.lineTo(p, s);
+      g.moveTo(0, p);
+      g.lineTo(s, p);
+      g.stroke();
+    }
+  } else {
+    // "panel" (default): big seams + rivets.
+    g.strokeStyle = dark;
+    g.lineWidth = 3;
+    for (let p = 0; p <= s; p += 64) {
+      g.beginPath();
+      g.moveTo(p, 0);
+      g.lineTo(p, s);
+      g.moveTo(0, p);
+      g.lineTo(s, p);
+      g.stroke();
+    }
+    g.fillStyle = lite;
+    for (let x = 16; x < s; x += 64)
+      for (let y = 16; y < s; y += 64) {
+        g.beginPath();
+        g.arc(x, y, 2.4, 0, Math.PI * 2);
+        g.fill();
+      }
+  }
   const tex = new THREE.CanvasTexture(cv);
   tex.wrapS = THREE.RepeatWrapping;
   tex.wrapT = THREE.RepeatWrapping;
@@ -132,7 +192,7 @@ export class Level {
     );
 
     const merged: number[] = [];
-    this.wallTex = makeWallTexture();
+    this.wallTex = makeWallTexture(def.tex);
     const sharedMat = new THREE.MeshStandardMaterial({
       color: def.wall,
       metalness: 0.55,

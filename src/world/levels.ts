@@ -1,4 +1,5 @@
 import type { DoorDef } from "./Doors";
+import type { Kind } from "./Enemies";
 
 export type BoxTuple = [
   number, // cx
@@ -15,6 +16,8 @@ export interface LevelDef {
   name: string;
   brief: string;
   tier: number; // enemy strength/variety tier (1..4)
+  kinds: Kind[]; // roster of robot types present in this level
+  tex: string; // wall texture style
   boxes: BoxTuple[];
   doors: DoorDef[];
   factoryIdx: number[];
@@ -40,6 +43,8 @@ const L1: LevelDef = {
   brief:
     "Infiltrate the abandoned mine. Find the access keys, destroy the\nreactor core, then reach the emergency exit before it blows.",
   tier: 1,
+  kinds: ["dasher", "shooter"],
+  tex: "panel",
   boxes: [
     [0, 0, -8, 26, 16, 28, 14],
     [0, 0, -32, 9, 8, 26, 7],
@@ -120,6 +125,8 @@ interface GenOpts {
   name: string;
   brief: string;
   tier: number;
+  kinds: Kind[];
+  tex: string;
   script: string; // sequence of F/B/L/R/U/D moves
   corrLen: number;
   corrCross: number;
@@ -190,6 +197,8 @@ function gen(o: GenOpts): LevelDef {
     name: o.name,
     brief: o.brief,
     tier: o.tier,
+    kinds: o.kinds,
+    tex: o.tex,
     boxes,
     doors: [
       {
@@ -226,6 +235,8 @@ const L2 = gen({
   brief:
     "The frozen pumping station: cramped iced-up tunnels that zig-zag\nthrough the rock. Fast interceptor drones. Blow the core and run.",
   tier: 2,
+  kinds: ["dasher", "shooter", "interceptor"],
+  tex: "tile",
   script: "FRFLFRFLF",
   corrLen: 24,
   corrCross: 9,
@@ -247,6 +258,8 @@ const L3 = gen({
   brief:
     "Molten-core foundry. Cavernous blazing halls, few turns, heavy\ntank drones holding every chamber. Bring firepower.",
   tier: 3,
+  kinds: ["dasher", "shooter", "tank"],
+  tex: "rock",
   script: "FFRFFLFF",
   corrLen: 30,
   corrCross: 13,
@@ -268,6 +281,8 @@ const L4 = gen({
   brief:
     "A pitch-black maze of switchbacks. Every hostile they have, in\nthe dark. Watch your corners.",
   tier: 4,
+  kinds: ["dasher", "interceptor", "spinner", "shooter"],
+  tex: "circuit",
   script: "FRFRFLFLFRF",
   corrLen: 24,
   corrCross: 9,
@@ -290,6 +305,8 @@ const L5 = gen({
   brief:
     "A vertical ascent through a collapsed elevator core. Climb shaft\nafter shaft to the reactor at the summit.",
   tier: 2,
+  kinds: ["dasher", "shooter", "sniper"],
+  tex: "hex",
   script: "FUFUFUFU",
   corrLen: 26,
   corrCross: 10,
@@ -311,6 +328,8 @@ const L6 = gen({
   brief:
     "Plunge into the drowned lower works — a descending spiral of\ndripping conduits. It only goes down.",
   tier: 3,
+  kinds: ["shooter", "tank", "bomber"],
+  tex: "rock",
   script: "FDFDRFDFD",
   corrLen: 26,
   corrCross: 10,
@@ -332,6 +351,8 @@ const L7 = gen({
   brief:
     "A sprawling industrial grid that staircases sideways forever.\nLong sight-lines, relentless turret fire.",
   tier: 3,
+  kinds: ["shooter", "sniper", "interceptor", "tank"],
+  tex: "panel",
   script: "FRFRFRFRFRF",
   corrLen: 30,
   corrCross: 11,
@@ -353,6 +374,8 @@ const L8 = gen({
   brief:
     "A heaving cryo vault that pitches up and down between freezer\nbays. Stay level, stay alive.",
   tier: 4,
+  kinds: ["dasher", "spinner", "sniper", "tank"],
+  tex: "tile",
   script: "FUFDFUFDFU",
   corrLen: 24,
   corrCross: 10,
@@ -374,6 +397,8 @@ const L9 = gen({
   brief:
     "No cover, no rest — a brutally long straight run packed end to\nend with the worst they can throw at you.",
   tier: 4,
+  kinds: ["interceptor", "spinner", "tank", "bomber", "shooter"],
+  tex: "circuit",
   script: "FFFFFFFFFFFF",
   corrLen: 30,
   corrCross: 10,
@@ -396,6 +421,16 @@ const L10 = gen({
   brief:
     "The final descent: a twisting three-dimensional nexus folding\nthrough every axis to the heart of the station.",
   tier: 4,
+  kinds: [
+    "dasher",
+    "shooter",
+    "interceptor",
+    "tank",
+    "spinner",
+    "sniper",
+    "bomber",
+  ],
+  tex: "hex",
   script: "FRFUFLFDFRFUF",
   corrLen: 26,
   corrCross: 11,
