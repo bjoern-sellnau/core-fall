@@ -200,7 +200,7 @@ export class PlayState implements GameState {
         <div class="hud__bar"><div class="hud__bar-fill hud__bar-fill--reactor" id="cf-reactor"></div></div>
       </div>
       <div class="hud__sd hidden" id="cf-sd"></div>
-      <div class="hud__hint">LMB FIRE &middot; 1-5/0 WEAPON &middot; V VIEW &middot; M MAP &middot; R RESET</div>
+      <div class="hud__hint">LMB FIRE &middot; 1-5/0 WEAPON &middot; V VIEW &middot; M MAP &middot; R ROLL &middot; H HEIGHT</div>
       <div class="hud__readout">
         COREFALL // TEST RUN<br />
         SPEED&nbsp;&nbsp;&nbsp;&nbsp; <span id="cf-speed">0</span> u/s<br />

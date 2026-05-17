@@ -91,7 +91,7 @@ export class MenuState implements GameState {
       </div>
       <div class="menu__controls">
         <b>Mouse</b> aim &nbsp;|&nbsp; <b>LMB</b> fire &nbsp;|&nbsp; <b>1-5</b> weapon &nbsp;|&nbsp; <b>0</b> rockets &nbsp;|&nbsp; <b>W/S</b> thrust<br />
-        <b>A/D</b> strafe &nbsp;|&nbsp; <b>Space/C</b> up&middot;down &nbsp;|&nbsp; <b>Q</b> roll&nbsp;L &nbsp;|&nbsp; <b>E</b> roll&nbsp;R &nbsp;|&nbsp; <b>R</b> reset rotation &nbsp;|&nbsp; <b>Shift</b> boost<br />
+        <b>A/D</b> strafe &nbsp;|&nbsp; <b>Space/C</b> up&middot;down &nbsp;|&nbsp; <b>Q</b> roll&nbsp;L &nbsp;|&nbsp; <b>E</b> roll&nbsp;R &nbsp;|&nbsp; <b>R</b> level roll &nbsp;|&nbsp; <b>H</b> reset height &nbsp;|&nbsp; <b>Shift</b> boost<br />
         <b>V</b> view &nbsp;|&nbsp; <b>M</b> map &nbsp;|&nbsp; <b>Esc</b> release mouse &nbsp;|&nbsp; <b>N</b> music on/off
       </div>
     `;

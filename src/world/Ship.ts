@@ -8,6 +8,7 @@ const ACCEL = 90;
 const DAMPING_RATE = 1.8; // higher = stops gliding sooner
 const MOUSE_SENSITIVITY = 0.0022; // rad per pixel
 const ROLL_SPEED = 1.7; // rad / s
+const HEIGHT_RESET = 24; // units/s toward the default altitude
 const LEVEL_RATE = 6; // how fast "auto-level" rights the ship
 
 /**
@@ -21,6 +22,7 @@ export class Ship {
   readonly model = new THREE.Group();
 
   private velocity = new THREE.Vector3();
+  private readonly baseY: number;
   private body: RAPIER.RigidBody;
   private collider: RAPIER.Collider;
   private controller: RAPIER.KinematicCharacterController;
@@ -41,6 +43,7 @@ export class Ship {
   ) {
     this.position.copy(spawnPos);
     this.quaternion.copy(spawnQuat);
+    this.baseY = spawnPos.y;
 
     this.body = world.createRigidBody(
       RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(
@@ -180,6 +183,15 @@ export class Ship {
     const boosting = input.isDown("ShiftLeft") || input.isDown("ShiftRight");
     const max = boosting ? BOOST_SPEED : MAX_SPEED;
     if (this.velocity.length() > max) this.velocity.setLength(max);
+
+    // H: ease back to the standard flight altitude.
+    if (input.isDown("KeyH")) {
+      const dy = this.baseY - this.position.y;
+      this.velocity.y = Math.max(
+        -HEIGHT_RESET,
+        Math.min(HEIGHT_RESET, dy * 2),
+      );
+    }
 
     // --- Collide & slide ---
     const desired = this.velocity.clone().multiplyScalar(dt);
