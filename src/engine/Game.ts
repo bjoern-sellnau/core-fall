@@ -20,6 +20,8 @@ export class Game {
   /** Story plays levels in sequence; mission is a one-off pick. */
   mode: "story" | "mission" = "story";
   levelIndex = 0;
+  pilotName = "";
+  pilotIdx = 0;
 
   private current: GameState | null = null;
   private clock = new THREE.Clock();

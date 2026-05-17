@@ -1,10 +1,9 @@
 import type { Game } from "../engine/Game";
 import type { GameState } from "./GameState";
-import { PlayState } from "./PlayState";
-import { BriefingState } from "./BriefingState";
+import { PilotState } from "./PilotState";
+import { DifficultyState } from "./DifficultyState";
+import { LeaderboardState } from "./LeaderboardState";
 import { LEVELS } from "../world/levels";
-
-const DIFF = ["ROOKIE", "PILOT", "ACE", "VETERAN", "INSANE"];
 
 /** Retro 90s Descent-style COREFALL title screen (from Claude Design). */
 export class MenuState implements GameState {
@@ -172,13 +171,14 @@ export class MenuState implements GameState {
       const rows = [
         ["Story", ""],
         ["Missions", `${LEVELS.length} OPS`],
+        ["Leaderboard", "RANKS"],
         ["Options", "CFG"],
         ["Level Editor", "— LOCKED —"],
       ];
       html = rows
         .map(
           ([l, h], i) =>
-            `<li data-i="${i}"${i === 3 ? ' class="lock"' : ""}><span class="cursor">▶</span><span class="label">${l}</span><span class="hint">${h}</span></li>`,
+            `<li data-i="${i}"${i === 4 ? ' class="lock"' : ""}><span class="cursor">▶</span><span class="label">${l}</span><span class="hint">${h}</span></li>`,
         )
         .join("");
     } else if (this.view === "missions") {
@@ -192,9 +192,8 @@ export class MenuState implements GameState {
     } else {
       this.titleEl.textContent = "OPERATOR CONFIG";
       html = `
-        <li data-i="0"><span class="cursor">▶</span><span class="label">Difficulty</span><span class="hint">${this.game.difficulty} ${DIFF[this.game.difficulty - 1]}</span></li>
-        <li data-i="1"><span class="cursor">▶</span><span class="label">Menu Theme</span><span class="hint">${this.game.music.menuTheme === 2 ? "V2 POP" : "V1 CALM"}</span></li>
-        <li data-i="2"><span class="cursor">▶</span><span class="label">Back</span><span class="hint"></span></li>`;
+        <li data-i="0"><span class="cursor">▶</span><span class="label">Menu Theme</span><span class="hint">${this.game.music.menuTheme === 2 ? "V2 POP" : "V1 CALM"}</span></li>
+        <li data-i="1"><span class="cursor">▶</span><span class="label">Back</span><span class="hint"></span></li>`;
     }
     this.listEl.innerHTML = html;
     this.items = [...this.listEl.querySelectorAll<HTMLElement>("li")];
@@ -235,11 +234,6 @@ export class MenuState implements GameState {
     this.toastTimer = 0.9;
   }
 
-  private startLevel() {
-    this.game.music.setScene("game");
-    this.game.setState(new PlayState());
-  }
-
   private choose(idx: number) {
     this.sel = idx;
     this.paint();
@@ -248,12 +242,15 @@ export class MenuState implements GameState {
         this.game.mode = "story";
         this.game.levelIndex = 0;
         this.game.sfx.pickup();
-        this.game.setState(new BriefingState());
+        this.game.setState(new PilotState());
       } else if (idx === 1) {
         this.view = "missions";
         this.game.sfx.weaponSelect();
         this.renderList();
       } else if (idx === 2) {
+        this.game.sfx.pickup();
+        this.game.setState(new LeaderboardState());
+      } else if (idx === 3) {
         this.view = "options";
         this.game.sfx.weaponSelect();
         this.renderList();
@@ -270,20 +267,14 @@ export class MenuState implements GameState {
         this.game.mode = "mission";
         this.game.levelIndex = idx;
         this.game.sfx.pickup();
-        this.startLevel();
+        this.game.setState(new DifficultyState());
       }
     } else {
       if (idx === 0) {
-        this.game.difficulty = (this.game.difficulty % 5) + 1;
-        this.game.sfx.weaponSelect();
-        this.renderList();
-        this.sel = 0;
-        this.paint();
-      } else if (idx === 1) {
         this.game.music.setMenuTheme(this.game.music.menuTheme === 2 ? 1 : 2);
         this.game.sfx.weaponSelect();
         this.renderList();
-        this.sel = 1;
+        this.sel = 0;
         this.paint();
       } else {
         this.view = "main";

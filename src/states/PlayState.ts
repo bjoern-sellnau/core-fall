@@ -3,6 +3,7 @@ import type { Game } from "../engine/Game";
 import type { GameState } from "./GameState";
 import { MenuState } from "./MenuState";
 import { BriefingState } from "./BriefingState";
+import { LeaderboardState } from "./LeaderboardState";
 import { PhysicsWorld, RAPIER } from "../physics/Physics";
 import { Level } from "../world/Level";
 import { Ship } from "../world/Ship";
@@ -644,14 +645,16 @@ export class PlayState implements GameState {
     this.flashEl.style.opacity = `${flash}`;
 
     if (this.winTimer > 6.5) {
-      const more =
-        this.game.mode === "story" &&
-        this.game.levelIndex < LEVELS.length - 1;
+      const story = this.game.mode === "story";
+      const more = story && this.game.levelIndex < LEVELS.length - 1;
+      const storyDone = story && !more;
       this.deathTitleEl.textContent = "MISSION COMPLETE";
       this.deathTitleEl.style.color = "#5dff8a";
       this.deathSubEl.textContent = more
         ? "YOU ESCAPED — PRESS SPACE FOR NEXT MISSION"
-        : "YOU ESCAPED — PRESS SPACE FOR MENU";
+        : storyDone
+          ? "ALL SHAFTS CLEARED — PRESS SPACE FOR LEADERBOARD"
+          : "YOU ESCAPED — PRESS SPACE FOR MENU";
       this.deathEl.classList.remove("hidden");
       const sp = this.game.input.isDown("Space");
       if (!sp) this.spaceArmed = true;
@@ -659,6 +662,9 @@ export class PlayState implements GameState {
         if (more) {
           this.game.levelIndex += 1;
           this.game.setState(new BriefingState());
+        } else if (storyDone) {
+          this.game.music.setScene("menu");
+          this.game.setState(new LeaderboardState(true));
         } else {
           this.game.music.setScene("menu");
           this.game.setState(new MenuState());

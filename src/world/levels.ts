@@ -18,6 +18,8 @@ export interface LevelDef {
   tier: number; // enemy strength/variety tier (1..4)
   kinds: Kind[]; // roster of robot types present in this level
   tex: string; // wall texture style
+  planet: string;
+  company: string;
   boxes: BoxTuple[];
   doors: DoorDef[];
   factoryIdx: number[];
@@ -45,6 +47,8 @@ const L1: LevelDef = {
   tier: 1,
   kinds: ["dasher", "shooter"],
   tex: "panel",
+  planet: "KORATH IV",
+  company: "NEXUS MINING CO.",
   boxes: [
     [0, 0, -8, 26, 16, 28, 14],
     [0, 0, -32, 9, 8, 26, 7],
@@ -127,6 +131,8 @@ interface GenOpts {
   tier: number;
   kinds: Kind[];
   tex: string;
+  planet: string;
+  company: string;
   script: string; // sequence of F/B/L/R/U/D moves
   corrLen: number;
   corrCross: number;
@@ -199,6 +205,8 @@ function gen(o: GenOpts): LevelDef {
     tier: o.tier,
     kinds: o.kinds,
     tex: o.tex,
+    planet: o.planet,
+    company: o.company,
     boxes,
     doors: [
       {
@@ -232,6 +240,8 @@ function gen(o: GenOpts): LevelDef {
 
 const L2 = gen({
   name: "GLACIER WORKS",
+  planet: "HOTH-9",
+  company: "CRYOCORP INDUSTRIES",
   brief:
     "The frozen pumping station: cramped iced-up tunnels that zig-zag\nthrough the rock. Fast interceptor drones. Blow the core and run.",
   tier: 2,
@@ -255,6 +265,8 @@ const L2 = gen({
 
 const L3 = gen({
   name: "THE FOUNDRY",
+  planet: "VULCAN'S ANVIL",
+  company: "MOLTEN DYNAMICS",
   brief:
     "Molten-core foundry. Cavernous blazing halls, few turns, heavy\ntank drones holding every chamber. Bring firepower.",
   tier: 3,
@@ -278,6 +290,8 @@ const L3 = gen({
 
 const L4 = gen({
   name: "THE LABYRINTH",
+  planet: "EREBUS",
+  company: "BLACKVEIN GUILD",
   brief:
     "A pitch-black maze of switchbacks. Every hostile they have, in\nthe dark. Watch your corners.",
   tier: 4,
@@ -302,6 +316,8 @@ const L4 = gen({
 
 const L5 = gen({
   name: "THE SPIRE",
+  planet: "ASCENSION",
+  company: "ORBITAL LIFT INC.",
   brief:
     "A vertical ascent through a collapsed elevator core. Climb shaft\nafter shaft to the reactor at the summit.",
   tier: 2,
@@ -325,6 +341,8 @@ const L5 = gen({
 
 const L6 = gen({
   name: "DEEP SHAFT",
+  planet: "MARROW",
+  company: "DEEPCORE LTD.",
   brief:
     "Plunge into the drowned lower works — a descending spiral of\ndripping conduits. It only goes down.",
   tier: 3,
@@ -348,6 +366,8 @@ const L6 = gen({
 
 const L7 = gen({
   name: "THE SPRAWL",
+  planet: "TANTALUS",
+  company: "GRID INDUSTRIES",
   brief:
     "A sprawling industrial grid that staircases sideways forever.\nLong sight-lines, relentless turret fire.",
   tier: 3,
@@ -371,6 +391,8 @@ const L7 = gen({
 
 const L8 = gen({
   name: "CRYO VAULT",
+  planet: "NIVEN",
+  company: "CRYOCORP INDUSTRIES",
   brief:
     "A heaving cryo vault that pitches up and down between freezer\nbays. Stay level, stay alive.",
   tier: 4,
@@ -394,6 +416,8 @@ const L8 = gen({
 
 const L9 = gen({
   name: "THE GAUNTLET",
+  planet: "STYX",
+  company: "IRONCLAD PMC",
   brief:
     "No cover, no rest — a brutally long straight run packed end to\nend with the worst they can throw at you.",
   tier: 4,
@@ -418,6 +442,8 @@ const L9 = gen({
 
 const L10 = gen({
   name: "CORE NEXUS",
+  planet: "THE CORE",
+  company: "NEXUS MINING CO.",
   brief:
     "The final descent: a twisting three-dimensional nexus folding\nthrough every axis to the heart of the station.",
   tier: 4,
@@ -447,6 +473,16 @@ const L10 = gen({
   fog: 0.009,
   fogColor: 0x0c0618,
 });
+
+export const ROBOT_LABEL: Record<Kind, string> = {
+  dasher: "RIPPER",
+  shooter: "GUNRIG",
+  interceptor: "WASP",
+  tank: "BULWARK",
+  spinner: "WHIRL",
+  sniper: "LANCE",
+  bomber: "DETONATOR",
+};
 
 export const LEVELS: LevelDef[] = [
   L1,
