@@ -1101,6 +1101,86 @@
   gap: 60px;
   margin-top: 8px;
 }
+.cf-title .codex {
+  display: flex;
+  gap: 28px;
+  margin-top: 12px;
+  align-items: stretch;
+}
+.cf-title .codex-view {
+  width: 360px;
+  height: 280px;
+  flex: 0 0 auto;
+  border: 2px solid rgba(255, 138, 20, 0.45);
+  background: radial-gradient(
+    ellipse at 50% 45%,
+    rgba(255, 138, 20, 0.08),
+    #04050a 70%
+  );
+  position: relative;
+}
+.cf-title .codex-view canvas {
+  display: block;
+  width: 100% !important;
+  height: 100% !important;
+}
+.cf-title .codex-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+.cf-title .codex-name {
+  font-family: "Bungee", sans-serif;
+  font-size: 46px;
+  color: #f5e1b8;
+  text-transform: uppercase;
+  text-shadow: 3px 3px 0 #4a1c05;
+}
+.cf-title .codex-role {
+  font-family: "VT323", monospace;
+  font-size: 28px;
+  line-height: 1.5;
+  color: #aeb6c8;
+  margin: 10px 0 16px;
+}
+.cf-title .codex-threat {
+  font-family: "VT323", monospace;
+  font-size: 24px;
+  letter-spacing: 0.3em;
+  color: var(--t-dim);
+  text-transform: uppercase;
+}
+.cf-title .codex-threat b {
+  color: var(--t-danger);
+  letter-spacing: 0.1em;
+}
+.cf-title .codex-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: auto;
+}
+.cf-title .codex-tab {
+  border: 1px solid rgba(255, 138, 20, 0.35);
+  padding: 8px 16px;
+  font-family: "Share Tech Mono", monospace;
+  font-size: 20px;
+  color: #cdd5e6;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  cursor: pointer;
+  user-select: none;
+}
+.cf-title .codex-tab.sel {
+  border-color: var(--t-hot);
+  color: #fff;
+  background: linear-gradient(
+    180deg,
+    rgba(255, 122, 24, 0.22),
+    rgba(255, 122, 24, 0.02)
+  );
+  box-shadow: 0 0 16px rgba(255, 122, 24, 0.4);
+}
 .cf-title .meta .k {
   font-family: "VT323", monospace;
   font-size: 24px;
