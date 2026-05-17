@@ -34,7 +34,7 @@ export interface LevelDef {
   fogColor: number;
 }
 
-// --- Level 1: the original mine ---
+// --- Level 1: the original hand-built mine ---
 const L1: LevelDef = {
   name: "THE MINE",
   brief:
@@ -103,22 +103,29 @@ const L1: LevelDef = {
   fogColor: 0x0a141e,
 };
 
-// --- Generated, guaranteed-connected levels (L2-L4) -----------------
-//
-// A straight chain along -Z where every box overlaps the next by a
-// fixed amount, so doorways always form: spawn -> rooms -> reactor ->
-// exit. This avoids the hand-tuned-geometry connectivity bugs.
-interface ChainOpts {
+// --- Procedural generator: a turning/branching chain where every box
+// provably overlaps the previous one, so doorways always form and the
+// path spawn -> ... -> reactor -> exit is guaranteed connected. ---
+type Dir = "F" | "B" | "L" | "R" | "U" | "D";
+const DV: Record<Dir, [number, number, number]> = {
+  F: [0, 0, -1],
+  B: [0, 0, 1],
+  L: [-1, 0, 0],
+  R: [1, 0, 0],
+  U: [0, 1, 0],
+  D: [0, -1, 0],
+};
+
+interface GenOpts {
   name: string;
   brief: string;
   tier: number;
-  segs: number; // corridor+room pairs
-  corrW: number;
-  corrH: number;
-  corrL: number;
-  roomW: number;
-  roomH: number;
-  roomL: number;
+  script: string; // sequence of F/B/L/R/U/D moves
+  corrLen: number;
+  corrCross: number;
+  roomLen: number;
+  roomCross: number;
+  darkStart?: boolean;
   wall: number;
   wallEmissive: number;
   line: number;
@@ -130,41 +137,54 @@ interface ChainOpts {
   fogColor: number;
 }
 
-function chain(o: ChainOpts): LevelDef {
-  const O = 4; // overlap between consecutive boxes
+function gen(o: GenOpts): LevelDef {
+  const O = 4;
   const boxes: BoxTuple[] = [];
-  let prevCz = 0;
-  let prevLz = 0;
-  let first = true;
-  const add = (
-    w: number,
-    h: number,
-    lz: number,
+  const c: [number, number, number] = [0, 0, 6 - o.roomLen / 2];
+  const s: [number, number, number] = [o.roomCross, o.roomCross, o.roomLen];
+  boxes.push([c[0], c[1], c[2], s[0], s[1], s[2], o.darkStart ? 0 : 12]);
+
+  const place = (
+    dir: Dir,
+    along: number,
+    cross: number,
     light: number,
     warm = false,
   ): number => {
-    const cz = first ? 6 - lz / 2 : prevCz - (prevLz / 2 + lz / 2 - O);
-    first = false;
-    prevCz = cz;
-    prevLz = lz;
-    boxes.push([0, 0, cz, w, h, lz, light, warm]);
+    const [dx, dy, dz] = DV[dir];
+    const ax = dx ? 0 : dy ? 1 : 2;
+    const sign = dx || dy || dz;
+    const ns: [number, number, number] = [cross, cross, cross];
+    ns[ax] = along;
+    const nc: [number, number, number] = [c[0], c[1], c[2]];
+    nc[ax] = c[ax] + sign * (s[ax] / 2 + ns[ax] / 2 - O);
+    boxes.push([nc[0], nc[1], nc[2], ns[0], ns[1], ns[2], light, warm]);
+    c[0] = nc[0];
+    c[1] = nc[1];
+    c[2] = nc[2];
+    s[0] = ns[0];
+    s[1] = ns[1];
+    s[2] = ns[2];
     return boxes.length - 1;
   };
 
-  add(o.roomW, o.roomH, o.roomL, Math.round(o.tier > 3 ? 0 : 12)); // 0 start
   const rooms: number[] = [];
-  for (let i = 0; i < o.segs; i++) {
-    add(o.corrW, o.corrH, o.corrL, 6);
-    // Every third room is left dark for variety.
-    rooms.push(add(o.roomW, o.roomH, o.roomL, i % 3 === 2 ? 0 : 11));
+  let n = 0;
+  for (const ch of o.script) {
+    const dir = ch as Dir;
+    place(dir, o.corrLen, o.corrCross, 6);
+    rooms.push(place(dir, o.roomLen, o.roomCross, n % 3 === 2 ? 0 : 11));
+    n++;
   }
-  add(o.corrW, o.corrH, o.corrL, 6); // approach corridor
-  const reactorIdx = add(o.roomW + 8, o.roomH + 8, 38, 0, true);
-  const exitIdx = add(16, 14, 30, 10);
+  // Finale always runs forward into the reactor + exit chamber.
+  place("F", o.corrLen, o.corrCross, 6);
+  const rCross = Math.max(o.roomCross + 10, 30);
+  const reactorIdx = place("F", 40, rCross, 0, true);
+  const exitIdx = place("F", 30, 18, 10);
 
-  const rZ = boxes[reactorIdx][2];
-  const rLz = boxes[reactorIdx][5];
-  const eZ = boxes[exitIdx][2];
+  const rb = boxes[reactorIdx];
+  const eb = boxes[exitIdx];
+  const door1 = boxes[1];
 
   return {
     name: o.name,
@@ -172,14 +192,22 @@ function chain(o: ChainOpts): LevelDef {
     tier: o.tier,
     boxes,
     doors: [
-      { pos: [0, 0, boxes[1][2]], size: [o.corrW + 2, o.corrH, 1.6], color: "normal" },
-      { pos: [0, 0, rZ - rLz / 2], size: [16, 14, 1.8], color: "exit" },
+      {
+        pos: [door1[0], door1[1], door1[2]],
+        size: [o.corrCross + 2, o.corrCross, 1.6],
+        color: "normal",
+      },
+      {
+        pos: [rb[0], rb[1], rb[2] - rb[5] / 2],
+        size: [16, 14, 1.8],
+        color: "exit",
+      },
     ],
     factoryIdx: rooms.filter((_, k) => k % 2 === 0),
     pickupIdx: rooms,
     keys: [],
-    core: [0, 0, rZ],
-    exit: [0, 0, eZ],
+    core: [rb[0], rb[1], rb[2]],
+    exit: [eb[0], eb[1], eb[2]],
     spawn: [0, 0, 3],
     wall: o.wall,
     wallEmissive: o.wallEmissive,
@@ -193,18 +221,16 @@ function chain(o: ChainOpts): LevelDef {
   };
 }
 
-const L2 = chain({
+const L2 = gen({
   name: "GLACIER WORKS",
   brief:
-    "The frozen pumping station. Cramped iced-up tunnels, fast\ninterceptor drones. Blow the core and run.",
+    "The frozen pumping station: cramped iced-up tunnels that zig-zag\nthrough the rock. Fast interceptor drones. Blow the core and run.",
   tier: 2,
-  segs: 5,
-  corrW: 9,
-  corrH: 8,
-  corrL: 24,
-  roomW: 24,
-  roomH: 16,
-  roomL: 26,
+  script: "FRFLFRFLF",
+  corrLen: 24,
+  corrCross: 9,
+  roomLen: 22,
+  roomCross: 22,
   wall: 0x2f4a5e,
   wallEmissive: 0x12303a,
   line: 0x7fdfff,
@@ -216,18 +242,16 @@ const L2 = chain({
   fogColor: 0x0c2630,
 });
 
-const L3 = chain({
+const L3 = gen({
   name: "THE FOUNDRY",
   brief:
-    "Molten core foundry. Long blazing halls crawling with heavy tank\ndrones. Heavy resistance — gear up.",
+    "Molten-core foundry. Cavernous blazing halls, few turns, heavy\ntank drones holding every chamber. Bring firepower.",
   tier: 3,
-  segs: 7,
-  corrW: 11,
-  corrH: 11,
-  corrL: 28,
-  roomW: 34,
-  roomH: 22,
-  roomL: 32,
+  script: "FFRFFLFF",
+  corrLen: 30,
+  corrCross: 13,
+  roomLen: 38,
+  roomCross: 40,
   wall: 0x52382a,
   wallEmissive: 0x361608,
   line: 0xff9a4a,
@@ -239,18 +263,17 @@ const L3 = chain({
   fogColor: 0x140804,
 });
 
-const L4 = chain({
+const L4 = gen({
   name: "THE LABYRINTH",
   brief:
-    "The core's last redoubt: a long pitch-black gauntlet swarming\nwith every hostile they have. No mistakes.",
+    "A pitch-black maze of switchbacks. Every hostile they have, in\nthe dark. Watch your corners.",
   tier: 4,
-  segs: 9,
-  corrW: 9,
-  corrH: 9,
-  corrL: 26,
-  roomW: 26,
-  roomH: 16,
-  roomL: 26,
+  script: "FRFRFLFLFRF",
+  corrLen: 24,
+  corrCross: 9,
+  roomLen: 22,
+  roomCross: 24,
+  darkStart: true,
   wall: 0x2c3a30,
   wallEmissive: 0x0c1a10,
   line: 0x5cff9a,
@@ -258,8 +281,147 @@ const L4 = chain({
   lampWarm: 0xc8ff7a,
   ambient: 0x3a5040,
   ambientI: 1.5,
-  fog: 0.01,
+  fog: 0.011,
   fogColor: 0x06120a,
 });
 
-export const LEVELS: LevelDef[] = [L1, L2, L3, L4];
+const L5 = gen({
+  name: "THE SPIRE",
+  brief:
+    "A vertical ascent through a collapsed elevator core. Climb shaft\nafter shaft to the reactor at the summit.",
+  tier: 2,
+  script: "FUFUFUFU",
+  corrLen: 26,
+  corrCross: 10,
+  roomLen: 22,
+  roomCross: 24,
+  wall: 0x3a3550,
+  wallEmissive: 0x161030,
+  line: 0xb78cff,
+  lampCool: 0xc8b0ff,
+  lampWarm: 0xff9ad0,
+  ambient: 0x6a5e8a,
+  ambientI: 2.1,
+  fog: 0.008,
+  fogColor: 0x100a1e,
+});
+
+const L6 = gen({
+  name: "DEEP SHAFT",
+  brief:
+    "Plunge into the drowned lower works — a descending spiral of\ndripping conduits. It only goes down.",
+  tier: 3,
+  script: "FDFDRFDFD",
+  corrLen: 26,
+  corrCross: 10,
+  roomLen: 22,
+  roomCross: 26,
+  wall: 0x24424a,
+  wallEmissive: 0x0a2228,
+  line: 0x48d8d0,
+  lampCool: 0x7ff0e6,
+  lampWarm: 0x9fe0c0,
+  ambient: 0x4f8088,
+  ambientI: 1.9,
+  fog: 0.012,
+  fogColor: 0x06181c,
+});
+
+const L7 = gen({
+  name: "THE SPRAWL",
+  brief:
+    "A sprawling industrial grid that staircases sideways forever.\nLong sight-lines, relentless turret fire.",
+  tier: 3,
+  script: "FRFRFRFRFRF",
+  corrLen: 30,
+  corrCross: 11,
+  roomLen: 24,
+  roomCross: 26,
+  wall: 0x47402c,
+  wallEmissive: 0x1c1808,
+  line: 0xe8d24a,
+  lampCool: 0xfff0a0,
+  lampWarm: 0xffcf60,
+  ambient: 0x7a7048,
+  ambientI: 2.0,
+  fog: 0.0075,
+  fogColor: 0x121006,
+});
+
+const L8 = gen({
+  name: "CRYO VAULT",
+  brief:
+    "A heaving cryo vault that pitches up and down between freezer\nbays. Stay level, stay alive.",
+  tier: 4,
+  script: "FUFDFUFDFU",
+  corrLen: 24,
+  corrCross: 10,
+  roomLen: 22,
+  roomCross: 24,
+  wall: 0x33506a,
+  wallEmissive: 0x10283a,
+  line: 0x9fd8ff,
+  lampCool: 0xd0ecff,
+  lampWarm: 0xbfe0ff,
+  ambient: 0x6f96b4,
+  ambientI: 2.0,
+  fog: 0.011,
+  fogColor: 0x0a1c2a,
+});
+
+const L9 = gen({
+  name: "THE GAUNTLET",
+  brief:
+    "No cover, no rest — a brutally long straight run packed end to\nend with the worst they can throw at you.",
+  tier: 4,
+  script: "FFFFFFFFFFFF",
+  corrLen: 30,
+  corrCross: 10,
+  roomLen: 20,
+  roomCross: 22,
+  darkStart: true,
+  wall: 0x42282c,
+  wallEmissive: 0x200a0e,
+  line: 0xff6a7a,
+  lampCool: 0xffb0bc,
+  lampWarm: 0xff8a6a,
+  ambient: 0x7a4a52,
+  ambientI: 1.7,
+  fog: 0.0085,
+  fogColor: 0x140609,
+});
+
+const L10 = gen({
+  name: "CORE NEXUS",
+  brief:
+    "The final descent: a twisting three-dimensional nexus folding\nthrough every axis to the heart of the station.",
+  tier: 4,
+  script: "FRFUFLFDFRFUF",
+  corrLen: 26,
+  corrCross: 11,
+  roomLen: 24,
+  roomCross: 28,
+  darkStart: true,
+  wall: 0x3a2c4a,
+  wallEmissive: 0x140a22,
+  line: 0xc070ff,
+  lampCool: 0xd8a0ff,
+  lampWarm: 0xff7ad0,
+  ambient: 0x5a4a78,
+  ambientI: 1.8,
+  fog: 0.009,
+  fogColor: 0x0c0618,
+});
+
+export const LEVELS: LevelDef[] = [
+  L1,
+  L2,
+  L3,
+  L4,
+  L5,
+  L6,
+  L7,
+  L8,
+  L9,
+  L10,
+];

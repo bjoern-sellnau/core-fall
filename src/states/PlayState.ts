@@ -89,9 +89,9 @@ export class PlayState implements GameState {
   private lives = START_LIVES;
   private deathFx!: DeathFx;
   private escapeLight!: THREE.PointLight;
-  private readonly escapeStart = new THREE.Vector3();
-  private readonly escapeDir = new THREE.Vector3();
   private winBoomTimer = 0;
+  private winInit = false;
+  private starfield!: THREE.Points;
   private deathTimer = 0;
   private spaceArmed = false;
   private readonly deathPos = new THREE.Vector3();
@@ -167,6 +167,21 @@ export class PlayState implements GameState {
 
     this.deathFx = new DeathFx();
     this.scene.add(this.deathFx.group);
+
+    // Starfield used only for the escape-into-space cinematic.
+    {
+      const n = 1400;
+      const pos = new Float32Array(n * 3);
+      for (let i = 0; i < n * 3; i++) pos[i] = (Math.random() - 0.5) * 600;
+      const sg = new THREE.BufferGeometry();
+      sg.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+      this.starfield = new THREE.Points(
+        sg,
+        new THREE.PointsMaterial({ color: 0xcfe0ff, size: 1.4 }),
+      );
+      this.starfield.visible = false;
+      this.scene.add(this.starfield);
+    }
 
     // Lights the ship during the escape cinematic (idle at 0 otherwise).
     this.escapeLight = new THREE.PointLight(0xbfe6ff, 0, 120, 1.4);
@@ -434,15 +449,9 @@ export class PlayState implements GameState {
           this.phase = "won";
           this.winTimer = 0;
           this.winBoomTimer = 0;
+          this.winInit = false;
           this.spaceArmed = false;
           this.root.classList.add("hidden");
-          this.ship.model.visible = true;
-          this.deathFx.reset();
-          this.escapeStart.copy(this.ship.position);
-          // Fixed clean escape axis (out the back of the mine) and a
-          // straight-flying pose so the cinematic reads clearly.
-          this.escapeDir.set(0, 0, -1);
-          this.ship.quaternion.copy(this.level.spawnQuaternion);
           this.game.input.exitPointerLock();
           this.game.music.setScene("victory");
           return;
@@ -587,52 +596,37 @@ export class PlayState implements GameState {
     this.pause.classList.add("hidden");
     this.winTimer += dt;
 
-    // Descent-style external shot: a fixed camera out in space framed
-    // on the mine mouth; the ship flies out of it toward the camera,
-    // with explosions blooming behind it inside the mine.
-    const CAM_DIST = 50;
-    const dist = 14 * this.winTimer + 6 * this.winTimer * this.winTimer;
-    this.ship.position
-      .copy(this.escapeStart)
-      .addScaledVector(this.escapeDir, dist);
-    this.ship.model.visible = true;
+    // Self-contained cinematic in open space: the ship flies straight
+    // out of the mine toward a fixed camera, mine exploding behind it.
+    if (!this.winInit) {
+      this.winInit = true;
+      this.level.group.visible = false;
+      this.scene.fog = null;
+      this.scene.background = new THREE.Color(0x05060c);
+      this.starfield.visible = true;
+      this.deathFx.reset();
+      this.ship.model.visible = true;
+      this.ship.model.rotation.set(0, Math.PI, 0); // nose toward camera
+      this.camera.position.set(0, 2.5, 26);
+      this.camera.lookAt(0, 0, -60);
+    }
+
+    const z = -110 + (28 * this.winTimer + 7 * this.winTimer * this.winTimer);
+    this.ship.position.set(0, 0, z);
     this.ship.model.position.copy(this.ship.position);
-    this.ship.model.quaternion.copy(this.ship.quaternion);
+    this.escapeLight.intensity = 190;
+    this.escapeLight.position.set(0, 4, z + 4);
 
-    const worldUp = new THREE.Vector3(0, 1, 0);
-    const side = new THREE.Vector3()
-      .crossVectors(this.escapeDir, worldUp)
-      .normalize();
-    this.camera.position
-      .copy(this.escapeStart)
-      .addScaledVector(this.escapeDir, CAM_DIST)
-      .addScaledVector(worldUp, 6)
-      .addScaledVector(side, 5);
-    // Stay framed on the mine mouth so the ship grows as it nears.
-    this.camera.lookAt(this.escapeStart);
-
-    this.escapeLight.intensity = 180;
-    this.escapeLight.position
-      .copy(this.ship.position)
-      .addScaledVector(worldUp, 2);
-    this.level.update(dt * 0.2, this.ship.position);
-
-    // Chain of explosions at/behind the mine mouth (behind the ship).
+    // Explosion chain trailing the ship, back toward the dying mine.
     this.deathFx.update(dt);
     this.winBoomTimer -= dt;
     if (this.winBoomTimer <= 0 && this.winTimer < 6) {
-      this.winBoomTimer = 0.24;
-      const back = 2 + Math.random() * 24;
-      const p = this.escapeStart
-        .clone()
-        .addScaledVector(this.escapeDir, -back)
-        .add(
-          new THREE.Vector3(
-            (Math.random() - 0.5) * 18,
-            (Math.random() - 0.5) * 18,
-            (Math.random() - 0.5) * 18,
-          ),
-        );
+      this.winBoomTimer = 0.22;
+      const p = new THREE.Vector3(
+        (Math.random() - 0.5) * 26,
+        (Math.random() - 0.5) * 20,
+        z - 14 - Math.random() * 50,
+      );
       this.deathFx.trigger(p, { laser: 0, rockets: 0 });
       this.game.sfx.explosion(2.6);
     }
@@ -716,6 +710,8 @@ export class PlayState implements GameState {
     this.pause.remove();
     this.deathEl.remove();
     this.mapView.remove();
+    this.starfield.geometry.dispose();
+    (this.starfield.material as THREE.Material).dispose();
     this.deathFx.dispose();
     this.doors.dispose();
     this.pickups.dispose();

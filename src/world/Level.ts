@@ -44,6 +44,48 @@ function carve(r: Rect, h: Rect): Rect[] {
   return out;
 }
 
+/** Procedural grey panel/grid texture (no image assets needed). */
+function makeWallTexture(): THREE.CanvasTexture {
+  const s = 256;
+  const cv = document.createElement("canvas");
+  cv.width = s;
+  cv.height = s;
+  const g = cv.getContext("2d")!;
+  g.fillStyle = "#8d949c";
+  g.fillRect(0, 0, s, s);
+  // Speckle.
+  for (let i = 0; i < 2400; i++) {
+    const x = Math.random() * s;
+    const y = Math.random() * s;
+    g.fillStyle = `rgba(${Math.random() < 0.5 ? 255 : 0},${
+      Math.random() < 0.5 ? 255 : 0
+    },${Math.random() < 0.5 ? 255 : 0},0.04)`;
+    g.fillRect(x, y, 2, 2);
+  }
+  // Panel seams + rivets.
+  g.strokeStyle = "rgba(20,24,28,0.55)";
+  g.lineWidth = 3;
+  for (let p = 0; p <= s; p += 64) {
+    g.beginPath();
+    g.moveTo(p, 0);
+    g.lineTo(p, s);
+    g.moveTo(0, p);
+    g.lineTo(s, p);
+    g.stroke();
+  }
+  g.fillStyle = "rgba(225,235,245,0.5)";
+  for (let x = 16; x < s; x += 64)
+    for (let y = 16; y < s; y += 64) {
+      g.beginPath();
+      g.arc(x, y, 2.4, 0, Math.PI * 2);
+      g.fill();
+    }
+  const tex = new THREE.CanvasTexture(cv);
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  return tex;
+}
+
 /**
  * Builds one level from a data-driven LevelDef: a graph of axis-aligned
  * rooms/corridors where overlaps auto-open into doorways.
@@ -65,6 +107,7 @@ export class Level {
 
   private reactor: THREE.Mesh;
   private reactorLight: THREE.PointLight;
+  private wallTex: THREE.CanvasTexture;
   private elapsed = 0;
 
   private sectors: { group: THREE.Group; c: THREE.Vector3; r2: number }[] = [];
@@ -89,12 +132,14 @@ export class Level {
     );
 
     const merged: number[] = [];
+    this.wallTex = makeWallTexture();
     const sharedMat = new THREE.MeshStandardMaterial({
       color: def.wall,
       metalness: 0.55,
       roughness: 0.65,
       side: THREE.DoubleSide,
       emissive: def.wallEmissive,
+      map: this.wallTex,
     });
     const lineMat = new THREE.LineBasicMaterial({
       color: def.line,
@@ -105,6 +150,7 @@ export class Level {
     for (let bi = 0; bi < boxes.length; bi++) {
       const b = boxes[bi];
       const v: number[] = [];
+      const vu: number[] = [];
       const push = (
         a: number,
         ua: number,
@@ -118,6 +164,7 @@ export class Level {
         p[ua] = u;
         p[va] = w;
         v.push(p[0], p[1], p[2]);
+        vu.push(u * 0.07, w * 0.07);
       };
 
       for (let a = 0; a < 3; a++) {
@@ -160,6 +207,10 @@ export class Level {
       sgeo.setAttribute(
         "position",
         new THREE.BufferAttribute(new Float32Array(v), 3),
+      );
+      sgeo.setAttribute(
+        "uv",
+        new THREE.BufferAttribute(new Float32Array(vu), 2),
       );
       sgeo.computeVertexNormals();
       const sectorGroup = new THREE.Group();
@@ -330,5 +381,6 @@ export class Level {
       if (Array.isArray(mat)) mat.forEach((m) => m.dispose());
       else mat?.dispose?.();
     });
+    this.wallTex.dispose();
   }
 }
