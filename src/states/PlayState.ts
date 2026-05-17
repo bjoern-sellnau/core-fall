@@ -78,6 +78,7 @@ export class PlayState implements GameState {
 
   private phase: "play" | "dead" | "gameover" | "won" = "play";
   private selfDestruct = false;
+  private spawned = false;
   private escapeTime = 0;
   private winTimer = 0;
   private reactorEl!: HTMLElement;
@@ -118,7 +119,6 @@ export class PlayState implements GameState {
     this.ship.model.visible = false;
     this.scene.add(this.ship.model);
     this.ship.syncCamera(this.camera);
-    this.game.sfx.spawn();
 
     this.doors = new Doors(
       this.physics.world,
@@ -358,6 +358,10 @@ export class PlayState implements GameState {
     this.viewKeyDown = vDown;
 
     if (locked) {
+      if (!this.spawned) {
+        this.spawned = true;
+        this.game.sfx.spawn();
+      }
       this.ship.update(dt, this.game.input);
       this.physics.step(dt);
       this.level.update(dt, this.ship.position);
