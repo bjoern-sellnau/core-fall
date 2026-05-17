@@ -29,7 +29,6 @@ const MAX_HULL = 100;
 const MAX_SHIELD = 100;
 const SHIELD_REGEN = 14; // per s
 const SHIELD_DELAY = 4; // s after a hit before shield regenerates
-const INVULN = 2; // s of invulnerability after respawn
 const HEALTH_PICKUP = 35;
 const ROCKET_PICKUP = 6;
 const START_LIVES = 5;
@@ -98,6 +97,8 @@ export class PlayState implements GameState {
   private readonly deathPos = new THREE.Vector3();
   private livesEl!: HTMLElement;
   private deathEl!: HTMLElement;
+  private winFade!: HTMLElement;
+  private hyperDone = false;
   private deathTitleEl!: HTMLElement;
   private deathSubEl!: HTMLElement;
 
@@ -164,6 +165,17 @@ export class PlayState implements GameState {
     this.pickups.spawn(this.level.pickupSpawns);
     for (const k of this.level.keySpawns) {
       this.pickups.add(k.pos, k.kind as PickupKind);
+    }
+    // Restored from a death-restart: carry lives/keys + dropped gear.
+    if (this.game.restartLives >= 0) {
+      this.lives = this.game.restartLives;
+      if (this.game.restartKeys) this.keys = { ...this.game.restartKeys };
+      for (const d of this.game.restartDrops) {
+        this.pickups.add(
+          new THREE.Vector3(d.x, d.y, d.z),
+          d.kind as PickupKind,
+        );
+      }
     }
     this.scene.add(this.pickups.group);
 
@@ -264,6 +276,14 @@ export class PlayState implements GameState {
       <div class="hud__death-sub" id="cf-death-sub">PRESS SPACE TO RESPAWN</div>
     `;
     game.container.appendChild(this.deathEl);
+
+    // Fullscreen fade used for the hyperdrive flash + black end screen.
+    this.winFade = document.createElement("div");
+    this.winFade.style.cssText =
+      "position:fixed;inset:0;background:#000;opacity:0;pointer-events:none;z-index:30;transition:none";
+    game.container.appendChild(this.winFade);
+    this.deathEl.style.zIndex = "40";
+
     this.deathTitleEl =
       this.deathEl.querySelector<HTMLElement>("#cf-death-title")!;
     this.deathSubEl = this.deathEl.querySelector<HTMLElement>("#cf-death-sub")!;
@@ -287,6 +307,33 @@ export class PlayState implements GameState {
       laser: this.weapons.laserLevel,
       rockets: this.weapons.rocketAmmo,
     });
+
+    // Stash what to restore if the level is restarted: lives, keys,
+    // and the gear scattered where we died (so it can be recovered).
+    if (this.lives > 0) {
+      const j = () => (Math.random() - 0.5) * 6;
+      const drops: { x: number; y: number; z: number; kind: string }[] = [];
+      for (let i = 1; i < this.weapons.laserLevel; i++) {
+        drops.push({
+          x: this.deathPos.x + j(),
+          y: this.deathPos.y + j(),
+          z: this.deathPos.z + j(),
+          kind: "laser",
+        });
+      }
+      if (this.weapons.rocketAmmo > 0) {
+        drops.push({
+          x: this.deathPos.x + j(),
+          y: this.deathPos.y + j(),
+          z: this.deathPos.z + j(),
+          kind: "rockets",
+        });
+      }
+      this.game.restartDrops = drops;
+      this.game.restartLives = this.lives;
+      this.game.restartKeys = { ...this.keys };
+    }
+
     this.phase = this.lives > 0 ? "dead" : "gameover";
     this.deathTimer = 0;
     this.spaceArmed = false;
@@ -299,40 +346,6 @@ export class PlayState implements GameState {
     }
     this.deathEl.classList.remove("hidden");
     this.root.classList.add("hidden");
-  }
-
-  private respawn() {
-    this.deathFx.reset();
-    this.game.music.setScene("game");
-
-    // Drop the gear you were carrying where you died, then start over
-    // from the level entrance with a bare ship (Descent style).
-    const jitter = () =>
-      new THREE.Vector3(
-        (Math.random() - 0.5) * 6,
-        (Math.random() - 0.5) * 6,
-        (Math.random() - 0.5) * 6,
-      );
-    const lvl = this.weapons.laserLevel;
-    for (let i = 1; i < lvl; i++) {
-      this.pickups.add(this.deathPos.clone().add(jitter()), "laser");
-    }
-    if (this.weapons.rocketAmmo > 0) {
-      this.pickups.add(this.deathPos.clone().add(jitter()), "rockets");
-    }
-
-    // Keys are kept across deaths so doors stay passable.
-    this.weapons.resetLoadout();
-
-    this.ship.respawn(this.level.spawnPosition, this.level.spawnQuaternion);
-    this.ship.syncCamera(this.camera);
-    this.game.sfx.spawn();
-    this.hull = MAX_HULL;
-    this.shield = MAX_SHIELD;
-    this.invuln = INVULN;
-    this.phase = "play";
-    this.deathEl.classList.add("hidden");
-    this.root.classList.remove("hidden");
   }
 
   private onClick: () => void = () => {};
@@ -612,39 +625,59 @@ export class PlayState implements GameState {
       this.ship.model.rotation.set(0, Math.PI, 0); // nose along +Z
     }
 
-    // Ship flies forward (+Z) out into space.
-    const z = -30 + (24 * this.winTimer + 6 * this.winTimer * this.winTimer);
+    const T_HYPER = 3.4; // hyperdrive kicks in
+    const T_JUMP = 4.0; // light-speed flash starts
+    const T_BLACK = 4.5; // pure black screen
+    const T_TEXT = 5.1; // completion text
+    const t = this.winTimer;
+
+    // Ship flies forward (+Z); after hyperdrive it streaks away.
+    let z = -30 + (24 * t + 6 * t * t);
+    if (t > T_HYPER) z += 1400 * (t - T_HYPER) * (t - T_HYPER);
     this.ship.position.set(0, 0, z);
     this.ship.model.position.copy(this.ship.position);
     this.escapeLight.intensity = 190;
     this.escapeLight.position.set(0, 4, z + 3);
 
-    // Camera stays ahead of the ship and steadily pulls back, so the
-    // ship is always in frame with the mine detonating beyond it.
-    const gap = 15 + this.winTimer * 6;
-    this.camera.position.set(2, 3, z + gap);
-    this.camera.lookAt(this.ship.position);
+    const gap = 15 + t * 6;
+    this.camera.position.set(2, 3, -30 + 24 * t + gap);
+    this.camera.lookAt(0, 0, Math.min(z, -30 + 24 * t + 30));
 
-    // Explosion chain trailing behind the ship (toward the mine).
+    if (t > T_HYPER && !this.hyperDone) {
+      this.hyperDone = true;
+      this.game.sfx.spawn(); // hyperdrive whoosh
+    }
+
+    // Explosion chain — only until the jump.
     this.deathFx.update(dt);
     this.winBoomTimer -= dt;
-    if (this.winBoomTimer <= 0 && this.winTimer < 6.5) {
+    if (this.winBoomTimer <= 0 && t < T_HYPER) {
       this.winBoomTimer = 0.2;
-      const p = new THREE.Vector3(
-        (Math.random() - 0.5) * 26,
-        (Math.random() - 0.5) * 20,
-        z - 22 - Math.random() * 55,
+      this.deathFx.trigger(
+        new THREE.Vector3(
+          (Math.random() - 0.5) * 26,
+          (Math.random() - 0.5) * 20,
+          z - 22 - Math.random() * 55,
+        ),
+        { laser: 0, rockets: 0 },
       );
-      this.deathFx.trigger(p, { laser: 0, rockets: 0 });
       this.game.sfx.explosion(2.6);
     }
 
-    // Whiteout flash as the mine goes up.
-    const flash = Math.min(0.8, Math.max(0, (this.winTimer - 5.5) / 1.8));
-    this.flashEl.style.background = "#dff0ff";
-    this.flashEl.style.opacity = `${flash}`;
+    // Hyperdrive: white blink → pure black screen, then the text.
+    if (t < T_JUMP) {
+      this.winFade.style.opacity = "0";
+    } else if (t < T_BLACK) {
+      this.winFade.style.background = "#e8f0ff";
+      this.winFade.style.opacity = `${(t - T_JUMP) / (T_BLACK - T_JUMP)}`;
+    } else {
+      this.winFade.style.background = "#000";
+      this.winFade.style.opacity = "1";
+      this.starfield.visible = false;
+      this.ship.model.visible = false;
+    }
 
-    if (this.winTimer > 6.5) {
+    if (t > T_TEXT) {
       const story = this.game.mode === "story";
       const more = story && this.game.levelIndex < LEVELS.length - 1;
       const storyDone = story && !more;
@@ -711,8 +744,14 @@ export class PlayState implements GameState {
     const space = this.game.input.isDown("Space");
     if (!space) this.spaceArmed = true;
     if (this.spaceArmed && space && this.deathTimer >= DEATH_MIN) {
-      if (this.phase === "gameover") this.game.setState(new MenuState());
-      else this.respawn();
+      if (this.phase === "gameover") {
+        this.game.clearRestart();
+        this.game.setState(new MenuState());
+      } else {
+        // Restart the level; lost gear & lives are carried over.
+        this.game.music.setScene("game");
+        this.game.setState(new PlayState());
+      }
     }
   }
 
@@ -722,6 +761,7 @@ export class PlayState implements GameState {
     this.root.remove();
     this.pause.remove();
     this.deathEl.remove();
+    this.winFade.remove();
     this.mapView.remove();
     this.starfield.geometry.dispose();
     (this.starfield.material as THREE.Material).dispose();

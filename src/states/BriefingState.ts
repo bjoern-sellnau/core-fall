@@ -53,6 +53,7 @@ export class BriefingState implements GameState {
 
   private launch() {
     this.game.sfx.pickup();
+    this.game.clearRestart();
     this.game.music.setScene("game");
     this.game.setState(new PlayState());
   }

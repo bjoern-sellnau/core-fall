@@ -73,6 +73,7 @@ export class DifficultyState implements GameState {
     if (this.game.mode === "story") {
       this.game.setState(new BriefingState());
     } else {
+      this.game.clearRestart();
       this.game.music.setScene("game");
       this.game.setState(new PlayState());
     }

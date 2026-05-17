@@ -23,6 +23,16 @@ export class Game {
   pilotName = "";
   pilotIdx = 0;
 
+  /** Carried across a death so the level can restart with lost gear. */
+  restartLives = -1;
+  restartDrops: { x: number; y: number; z: number; kind: string }[] = [];
+  restartKeys: { blue: boolean; red: boolean; yellow: boolean } | null = null;
+  clearRestart() {
+    this.restartLives = -1;
+    this.restartDrops = [];
+    this.restartKeys = null;
+  }
+
   private current: GameState | null = null;
   private clock = new THREE.Clock();
   private running = false;
