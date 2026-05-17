@@ -58,6 +58,16 @@ const P_B: Bar = {
   lead: [81, 79, 76, 79, 72, 74, 76, 79, 84, 81, 79, 76, 79, 76, 74, 72],
 };
 
+// --- VICTORY: bright triumphant fanfare ---
+const V_A: Bar = {
+  bass: [36, 36, 43, 43, 41, 41, 43, 43, 36, 36, 43, 43, 48, null, 43, null],
+  lead: [84, 88, 91, 96, 91, 88, 84, 88, 86, 89, 93, 96, 93, 89, 86, 84],
+};
+const V_B: Bar = {
+  bass: [41, 41, 45, 45, 43, 43, 48, 48, 36, 36, 43, 43, 48, 48, 43, 43],
+  lead: [89, 93, 96, 100, 96, 93, 89, 93, 84, 88, 91, 96, 91, 96, 100, 96],
+};
+
 // --- DEATH: very slow, dark, mournful ---
 const D_A: Bar = {
   bass: [21, null, null, null, null, null, null, null, 24, null, null, null, null, null, null, null],
@@ -89,6 +99,14 @@ const MENU_V2: SceneCfg = {
   bars: [P_A, P_B],
   arr: [0, 0, 1, 0],
   gain: 0.22,
+  drums: true,
+  pad: false,
+};
+const VICTORY: SceneCfg = {
+  bpm: 132,
+  bars: [V_A, V_B],
+  arr: [0, 1, 0, 1],
+  gain: 0.27,
   drums: true,
   pad: false,
 };
@@ -143,14 +161,16 @@ export class MusicEngine {
     return this.menuVariant === 2 ? MENU_V2 : MENU_V1;
   }
 
-  /** Switch between the menu, game and death tracks. */
-  setScene(scene: "menu" | "game" | "death") {
+  /** Switch between the menu, game, death and victory tracks. */
+  setScene(scene: "menu" | "game" | "death" | "victory") {
     const next =
       scene === "game"
         ? GAME
         : scene === "death"
           ? DEATH
-          : this.menuCfg();
+          : scene === "victory"
+            ? VICTORY
+            : this.menuCfg();
     if (next === this.cfg) return;
     this.cfg = next;
     this.step = 0;

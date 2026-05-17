@@ -86,6 +86,7 @@ export class PlayState implements GameState {
   private sdEl!: HTMLElement;
   private lives = START_LIVES;
   private deathFx!: DeathFx;
+  private escapeLight!: THREE.PointLight;
   private deathTimer = 0;
   private spaceArmed = false;
   private readonly deathPos = new THREE.Vector3();
@@ -157,6 +158,10 @@ export class PlayState implements GameState {
 
     this.deathFx = new DeathFx();
     this.scene.add(this.deathFx.group);
+
+    // Lights the ship during the escape cinematic (idle at 0 otherwise).
+    this.escapeLight = new THREE.PointLight(0xbfe6ff, 0, 120, 1.4);
+    this.scene.add(this.escapeLight);
 
     // --- HUD ---
     this.root = document.createElement("div");
@@ -421,8 +426,9 @@ export class PlayState implements GameState {
           this.winTimer = 0;
           this.spaceArmed = false;
           this.root.classList.add("hidden");
+          this.ship.model.visible = true;
           this.game.input.exitPointerLock();
-          this.game.music.setScene("menu");
+          this.game.music.setScene("victory");
           return;
         }
         if (this.escapeTime <= 0) {
@@ -577,8 +583,18 @@ export class PlayState implements GameState {
     this.camera.lookAt(this.ship.position);
     this.level.update(dt * 0.3, this.ship.position);
 
+    // Keep the fleeing ship lit so the escape is actually visible.
+    this.ship.model.visible = true;
+    this.ship.model.position.copy(this.ship.position);
+    this.ship.model.quaternion.copy(this.ship.quaternion);
+    this.escapeLight.intensity = 160;
+    this.escapeLight.position
+      .copy(this.ship.position)
+      .addScaledVector(up, 3)
+      .addScaledVector(this.tmpFwd, -2);
+
     // Whiteout as the mine detonates behind you.
-    const flash = Math.min(0.85, Math.max(0, (this.winTimer - 2) / 2));
+    const flash = Math.min(0.9, Math.max(0, (this.winTimer - 2.4) / 2.2));
     this.flashEl.style.background = "#cfefff";
     this.flashEl.style.opacity = `${flash}`;
     if (this.winTimer > 1.6 && this.winTimer < 4 && Math.random() < 0.25) {
@@ -592,7 +608,10 @@ export class PlayState implements GameState {
       this.deathEl.classList.remove("hidden");
       const sp = this.game.input.isDown("Space");
       if (!sp) this.spaceArmed = true;
-      if (this.spaceArmed && sp) this.game.setState(new MenuState());
+      if (this.spaceArmed && sp) {
+        this.game.music.setScene("menu");
+        this.game.setState(new MenuState());
+      }
     }
   }
 
