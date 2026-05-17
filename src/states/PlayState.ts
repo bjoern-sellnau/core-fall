@@ -289,15 +289,9 @@ export class PlayState implements GameState {
     if (this.weapons.rocketAmmo > 0) {
       this.pickups.add(this.deathPos.clone().add(jitter()), "rockets");
     }
-    if (this.keys.blue)
-      this.pickups.add(this.deathPos.clone().add(jitter()), "keyblue");
-    if (this.keys.red)
-      this.pickups.add(this.deathPos.clone().add(jitter()), "keyred");
-    if (this.keys.yellow)
-      this.pickups.add(this.deathPos.clone().add(jitter()), "keyyellow");
 
+    // Keys are kept across deaths so doors stay passable.
     this.weapons.resetLoadout();
-    this.keys = { blue: false, red: false, yellow: false };
 
     this.ship.respawn(this.level.spawnPosition, this.level.spawnQuaternion);
     this.ship.syncCamera(this.camera);
