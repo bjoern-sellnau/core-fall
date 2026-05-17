@@ -2,6 +2,8 @@ import * as THREE from "three";
 import type { Game } from "../engine/Game";
 import type { GameState } from "./GameState";
 import { PlayState } from "./PlayState";
+import { BriefingState } from "./BriefingState";
+import { LEVELS } from "../world/levels";
 
 /** Main menu: COREFALL title screen with a slowly tumbling core behind it. */
 export class MenuState implements GameState {
@@ -65,8 +67,20 @@ export class MenuState implements GameState {
     this.root.innerHTML = `
       <h1 class="menu__title">COREFALL</h1>
       <p class="menu__subtitle">DESCENT INTO THE CORE</p>
+      <div class="menu__diff-label">MODE</div>
+      <div class="menu__diff" id="cf-mode">
+        <button class="menu__diff-btn" data-m="story">STORY</button>
+        <button class="menu__diff-btn" data-m="mission">MISSIONS</button>
+      </div>
+      <div class="menu__diff-label">MISSION</div>
+      <div class="menu__diff" id="cf-level">
+        ${LEVELS.map(
+          (l, i) =>
+            `<button class="menu__diff-btn" data-l="${i}">${i + 1} ${l.name}</button>`,
+        ).join("")}
+      </div>
       <div class="menu__diff-label">DIFFICULTY</div>
-      <div class="menu__diff">${diffBtns}</div>
+      <div class="menu__diff" id="cf-diff">${diffBtns}</div>
       <div class="menu__diff-label">MENU THEME</div>
       <div class="menu__diff" id="cf-theme">
         <button class="menu__diff-btn" data-t="2">V2 POP</button>
@@ -83,8 +97,9 @@ export class MenuState implements GameState {
     `;
     game.container.appendChild(this.root);
 
-    const diffButtons =
-      this.root.querySelectorAll<HTMLButtonElement>(".menu__diff-btn");
+    const diffButtons = this.root.querySelectorAll<HTMLButtonElement>(
+      "#cf-diff .menu__diff-btn",
+    );
     const paint = () => {
       diffButtons.forEach((b) => {
         const on = Number(b.dataset.d) === this.game.difficulty;
@@ -97,6 +112,45 @@ export class MenuState implements GameState {
         paint();
       };
     });
+
+    const modeBtns = this.root.querySelectorAll<HTMLButtonElement>(
+      "#cf-mode .menu__diff-btn",
+    );
+    const levelBtns = this.root.querySelectorAll<HTMLButtonElement>(
+      "#cf-level .menu__diff-btn",
+    );
+    const startBtn =
+      this.root.querySelector<HTMLButtonElement>("#cf-start")!;
+    const paintModes = () => {
+      modeBtns.forEach((b) =>
+        b.classList.toggle(
+          "menu__diff-btn--on",
+          b.dataset.m === this.game.mode,
+        ),
+      );
+      levelBtns.forEach((b) =>
+        b.classList.toggle(
+          "menu__diff-btn--on",
+          Number(b.dataset.l) === this.game.levelIndex,
+        ),
+      );
+      startBtn.textContent =
+        this.game.mode === "story" ? "START STORY" : "START MISSION";
+    };
+    modeBtns.forEach((b) => {
+      b.onclick = () => {
+        this.game.mode = b.dataset.m as "story" | "mission";
+        paintModes();
+      };
+    });
+    levelBtns.forEach((b) => {
+      b.onclick = () => {
+        this.game.levelIndex = Number(b.dataset.l);
+        this.game.mode = "mission";
+        paintModes();
+      };
+    });
+    paintModes();
 
     const themeBtns = this.root.querySelectorAll<HTMLButtonElement>(
       "#cf-theme .menu__diff-btn",
@@ -124,10 +178,15 @@ export class MenuState implements GameState {
     const start = () => {
       this.game.music.start();
       this.game.sfx.start();
-      this.game.music.setScene("game");
-      this.game.setState(new PlayState());
+      if (this.game.mode === "story") {
+        this.game.levelIndex = 0;
+        this.game.setState(new BriefingState());
+      } else {
+        this.game.music.setScene("game");
+        this.game.setState(new PlayState());
+      }
     };
-    this.root.querySelector<HTMLButtonElement>("#cf-start")!.onclick = start;
+    startBtn.onclick = start;
     this.onKey = (e: KeyboardEvent) => {
       if (e.code === "Enter") start();
     };

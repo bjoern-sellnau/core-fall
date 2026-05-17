@@ -42,7 +42,7 @@ export function difficultyConfig(level: number): DiffConfig {
   return TABLE[Math.max(1, Math.min(5, level))];
 }
 
-type Kind = "dasher" | "shooter";
+type Kind = "dasher" | "shooter" | "interceptor" | "tank";
 
 interface Drone {
   mesh: THREE.Mesh;
@@ -133,6 +133,8 @@ export class EnemySwarm {
 
   private readonly geoD = new THREE.OctahedronGeometry(1.7, 0);
   private readonly geoS = new THREE.IcosahedronGeometry(1.8, 0);
+  private readonly geoI = new THREE.TetrahedronGeometry(1.7);
+  private readonly geoT = new THREE.BoxGeometry(3.2, 3.2, 3.2);
   private readonly geoF = new THREE.BoxGeometry(5, 5, 5);
   private readonly matD = new THREE.MeshStandardMaterial({
     color: 0x223040,
@@ -147,6 +149,20 @@ export class EnemySwarm {
     emissiveIntensity: 1.1,
     metalness: 0.6,
     roughness: 0.4,
+  });
+  private readonly matI = new THREE.MeshStandardMaterial({
+    color: 0x203840,
+    emissive: 0x33ffd0,
+    emissiveIntensity: 1.2,
+    metalness: 0.6,
+    roughness: 0.35,
+  });
+  private readonly matT = new THREE.MeshStandardMaterial({
+    color: 0x402020,
+    emissive: 0xff7a22,
+    emissiveIntensity: 1.0,
+    metalness: 0.6,
+    roughness: 0.5,
   });
   private readonly matF = new THREE.MeshStandardMaterial({
     color: 0x3a1c1c,
@@ -168,7 +184,21 @@ export class EnemySwarm {
     private readonly world: RAPIER.World,
     private readonly sfx: Sfx,
     private readonly cfg: DiffConfig,
+    private readonly tier = 1,
   ) {}
+
+  private kindFor(i: number): Kind {
+    // Higher tiers introduce faster/tougher hostiles into the mix.
+    const pool: Kind[] =
+      this.tier >= 4
+        ? ["dasher", "shooter", "interceptor", "tank", "interceptor", "shooter"]
+        : this.tier === 3
+          ? ["dasher", "shooter", "interceptor", "tank"]
+          : this.tier === 2
+            ? ["dasher", "shooter", "interceptor"]
+            : ["dasher", "shooter"];
+    return pool[i % pool.length];
+  }
 
   get count(): number {
     return this.drones.length;
@@ -224,20 +254,39 @@ export class EnemySwarm {
   }
 
   private makeDrone(p: THREE.Vector3) {
-    const kind: Kind = this.spawnCount % 2 === 1 ? "shooter" : "dasher";
+    const kind = this.kindFor(this.spawnCount);
     this.spawnCount++;
-    const mesh = new THREE.Mesh(
-      kind === "shooter" ? this.geoS : this.geoD,
-      kind === "shooter" ? this.matS : this.matD,
-    );
+    const geo =
+      kind === "shooter"
+        ? this.geoS
+        : kind === "interceptor"
+          ? this.geoI
+          : kind === "tank"
+            ? this.geoT
+            : this.geoD;
+    const mat =
+      kind === "shooter"
+        ? this.matS
+        : kind === "interceptor"
+          ? this.matI
+          : kind === "tank"
+            ? this.matT
+            : this.matD;
+    const mesh = new THREE.Mesh(geo, mat);
     mesh.position.copy(p);
     this.group.add(mesh);
+    const hp =
+      kind === "tank"
+        ? this.cfg.droneHp * 3 + this.tier
+        : kind === "interceptor"
+          ? 1
+          : this.cfg.droneHp;
     this.drones.push({
       mesh,
       origin: p.clone(),
       home: p.clone(),
       phase: this.spawnCount * 1.7,
-      hp: this.cfg.droneHp,
+      hp,
       kind,
       cool: 1.5 + Math.random() * 2.5,
       lungeT: 0,
@@ -324,7 +373,7 @@ export class EnemySwarm {
       }
 
       dr.cool -= dt;
-      if (dr.kind === "dasher") {
+      if (dr.kind === "dasher" || dr.kind === "interceptor") {
         this.updateDasher(dr, dt, dist, playerPos, damp);
       } else {
         this.updateShooter(dr, dt, dist, damp);
@@ -334,7 +383,9 @@ export class EnemySwarm {
           !this.blocked(dr.mesh.position, playerPos)
         ) {
           this.fireEnemyBolt(dr, playerPos);
-          dr.cool = 1.4 + Math.random() * 1.8;
+          if (dr.kind === "tank") this.fireEnemyBolt(dr, playerPos);
+          dr.cool =
+            (dr.kind === "tank" ? 1.0 : 1.4) + Math.random() * 1.6;
           threat += 0.4;
         }
       }
@@ -374,19 +425,23 @@ export class EnemySwarm {
     playerPos: THREE.Vector3,
     damp: number,
   ) {
+    const fast = dr.kind === "interceptor";
     if (dr.lungeT > 0) {
       dr.lungeT -= dt;
-      dr.mesh.position.addScaledVector(dr.lungeDir, LUNGE_SPEED * dt);
+      dr.mesh.position.addScaledVector(
+        dr.lungeDir,
+        LUNGE_SPEED * (fast ? 1.8 : 1) * dt,
+      );
       return;
     }
     if (dr.cool <= 0 && dist < ATTACK_RANGE && dist > DRONE_RADIUS + 3) {
       dr.lungeT = LUNGE_TIME;
       dr.lungeDir.subVectors(playerPos, dr.mesh.position).normalize();
-      dr.cool = 1.6 + Math.random() * 2.6;
+      dr.cool = (fast ? 0.6 : 1.6) + Math.random() * (fast ? 1.0 : 2.6);
     }
     if (dist < DETECT) {
       this.tmp.subVectors(playerPos, dr.home).normalize();
-      dr.home.addScaledVector(this.tmp, CHASE_SPEED * dt);
+      dr.home.addScaledVector(this.tmp, CHASE_SPEED * (fast ? 1.8 : 1) * dt);
     }
     this.hover(dr, damp);
   }
@@ -589,9 +644,13 @@ export class EnemySwarm {
   dispose() {
     this.geoD.dispose();
     this.geoS.dispose();
+    this.geoI.dispose();
+    this.geoT.dispose();
     this.geoF.dispose();
     this.matD.dispose();
     this.matS.dispose();
+    this.matI.dispose();
+    this.matT.dispose();
     this.matF.dispose();
     this.eboltGeo.dispose();
     this.eboltMat.dispose();

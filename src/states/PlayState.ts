@@ -2,11 +2,13 @@ import * as THREE from "three";
 import type { Game } from "../engine/Game";
 import type { GameState } from "./GameState";
 import { MenuState } from "./MenuState";
+import { BriefingState } from "./BriefingState";
 import { PhysicsWorld, RAPIER } from "../physics/Physics";
 import { Level } from "../world/Level";
 import { Ship } from "../world/Ship";
 import { WeaponSystem, WEAPON_NAME } from "../world/Weapons";
 import { EnemySwarm, difficultyConfig } from "../world/Enemies";
+import { LEVELS } from "../world/levels";
 import { PickupField, type PickupKind } from "../world/Pickups";
 import { DeathFx } from "../world/DeathFx";
 import { Doors } from "../world/Doors";
@@ -108,12 +110,15 @@ export class PlayState implements GameState {
     this.camera.aspect = width / height;
     this.camera.updateProjectionMatrix();
 
-    this.scene.background = new THREE.Color(0x04060a);
-    this.scene.fog = new THREE.FogExp2(0x0a141e, 0.0075);
-
     this.physics = new PhysicsWorld();
-    this.level = new Level(this.physics.world);
+    this.level = new Level(this.physics.world, LEVELS[this.game.levelIndex]);
     this.scene.add(this.level.group);
+
+    this.scene.background = new THREE.Color(this.level.fogColor);
+    this.scene.fog = new THREE.FogExp2(
+      this.level.fogColor,
+      this.level.fogDensity,
+    );
 
     this.ship = new Ship(
       this.physics.world,
@@ -144,6 +149,7 @@ export class PlayState implements GameState {
       this.physics.world,
       this.game.sfx,
       difficultyConfig(this.game.difficulty),
+      LEVELS[this.game.levelIndex].tier,
     );
     this.enemies.spawn(
       this.level.enemySpawns,
@@ -637,15 +643,25 @@ export class PlayState implements GameState {
     this.flashEl.style.opacity = `${flash}`;
 
     if (this.winTimer > 6.5) {
+      const more =
+        this.game.mode === "story" &&
+        this.game.levelIndex < LEVELS.length - 1;
       this.deathTitleEl.textContent = "MISSION COMPLETE";
       this.deathTitleEl.style.color = "#5dff8a";
-      this.deathSubEl.textContent = "YOU ESCAPED — PRESS SPACE FOR MENU";
+      this.deathSubEl.textContent = more
+        ? "YOU ESCAPED — PRESS SPACE FOR NEXT MISSION"
+        : "YOU ESCAPED — PRESS SPACE FOR MENU";
       this.deathEl.classList.remove("hidden");
       const sp = this.game.input.isDown("Space");
       if (!sp) this.spaceArmed = true;
       if (this.spaceArmed && sp) {
-        this.game.music.setScene("menu");
-        this.game.setState(new MenuState());
+        if (more) {
+          this.game.levelIndex += 1;
+          this.game.setState(new BriefingState());
+        } else {
+          this.game.music.setScene("menu");
+          this.game.setState(new MenuState());
+        }
       }
     }
   }

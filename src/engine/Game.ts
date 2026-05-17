@@ -17,6 +17,9 @@ export class Game {
 
   /** Selected difficulty 1..5 (persists across menu/play). */
   difficulty = 2;
+  /** Story plays levels in sequence; mission is a one-off pick. */
+  mode: "story" | "mission" = "story";
+  levelIndex = 0;
 
   private current: GameState | null = null;
   private clock = new THREE.Clock();

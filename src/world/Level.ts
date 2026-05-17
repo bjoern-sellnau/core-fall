@@ -1,12 +1,13 @@
 import * as THREE from "three";
 import { RAPIER } from "../physics/Physics";
 import type { DoorDef } from "./Doors";
+import type { LevelDef } from "./levels";
 
 interface Box {
   min: [number, number, number];
   max: [number, number, number];
-  light: number; // point-light intensity at centre (0 = none)
-  warm?: boolean;
+  light: number;
+  warm: boolean;
 }
 
 function box(
@@ -29,13 +30,12 @@ function box(
 
 type Rect = { x0: number; x1: number; y0: number; y1: number };
 
-/** Rect minus an axis-aligned hole → up to 4 sub-rects. */
 function carve(r: Rect, h: Rect): Rect[] {
   const hx0 = Math.max(r.x0, h.x0);
   const hx1 = Math.min(r.x1, h.x1);
   const hy0 = Math.max(r.y0, h.y0);
   const hy1 = Math.min(r.y1, h.y1);
-  if (hx0 >= hx1 || hy0 >= hy1) return [r]; // no overlap
+  if (hx0 >= hx1 || hy0 >= hy1) return [r];
   const out: Rect[] = [];
   if (hy0 > r.y0) out.push({ x0: r.x0, x1: r.x1, y0: r.y0, y1: hy0 });
   if (hy1 < r.y1) out.push({ x0: r.x0, x1: r.x1, y0: hy1, y1: r.y1 });
@@ -45,29 +45,23 @@ function carve(r: Rect, h: Rect): Rect[] {
 }
 
 /**
- * Descent-style mine: a graph of axis-aligned rooms and corridors.
- * Where two boxes overlap, the shared wall is automatically opened into
- * a doorway, so the interior is one connected, fly-through space.
+ * Builds one level from a data-driven LevelDef: a graph of axis-aligned
+ * rooms/corridors where overlaps auto-open into doorways.
  */
 export class Level {
   readonly group = new THREE.Group();
   readonly spawnPosition: THREE.Vector3;
   readonly spawnQuaternion: THREE.Quaternion;
   readonly corePosition: THREE.Vector3;
-  readonly exitZone = new THREE.Vector3(0, -6, -508);
+  readonly exitZone: THREE.Vector3;
+  readonly fogDensity: number;
+  readonly fogColor: number;
   readonly mapBoxes: { x0: number; z0: number; x1: number; z1: number }[] = [];
   readonly enemySpawns: THREE.Vector3[] = [];
   readonly factorySpawns: THREE.Vector3[] = [];
   readonly pickupSpawns: THREE.Vector3[] = [];
   readonly keySpawns: { pos: THREE.Vector3; kind: string }[] = [];
-  readonly doorDefs: DoorDef[] = [
-    { pos: [0, 0, -26], size: [11, 10, 1.6], color: "normal" },
-    { pos: [0, 0, -80], size: [11, 11, 1.6], color: "blue" },
-    { pos: [0, -6, -210], size: [11, 11, 1.6], color: "yellow" },
-    { pos: [0, -22, -330], size: [12, 12, 1.8], color: "red" },
-    { pos: [0, -8, -450], size: [12, 14, 1.6], color: "normal" },
-    { pos: [0, -6, -494], size: [22, 18, 1.8], color: "exit" },
-  ];
+  readonly doorDefs: DoorDef[];
 
   private reactor: THREE.Mesh;
   private reactorLight: THREE.PointLight;
@@ -82,56 +76,28 @@ export class Level {
     range: number;
   }[] = [];
 
-  private static readonly CORE = new THREE.Vector3(0, -6, -470);
+  constructor(world: RAPIER.World, def: LevelDef) {
+    this.doorDefs = def.doors;
+    this.fogDensity = def.fog;
+    this.fogColor = def.fogColor;
+    const core = new THREE.Vector3(def.core[0], def.core[1], def.core[2]);
+    this.corePosition = core.clone();
+    this.exitZone = new THREE.Vector3(def.exit[0], def.exit[1], def.exit[2]);
 
-  constructor(world: RAPIER.World) {
-    // Long Descent-style mine: dark sectors, side branches, locked
-    // doors, ending in the reactor chamber.
-    const boxes: Box[] = [
-      box(0, 0, -8, 26, 16, 28, 14), // 0 start
-      box(0, 0, -32, 9, 8, 26, 7), // 1 corridor
-      box(0, 0, -58, 30, 18, 30, 16), // 2 room
-      box(0, 0, -88, 9, 9, 32, 7), // 3 corridor
-      box(0, 0, -118, 34, 18, 32, 18), // 4 junction
-      box(24, 0, -118, 30, 8, 9, 7), // 5 branch corridor
-      box(46, 0, -118, 22, 16, 24, 14, true), // 6 branch room
-      box(0, -6, -153, 9, 9, 42, 7), // 7 descending corridor
-      box(0, -6, -188, 34, 18, 32, 0), // 8 DARK room
-      box(0, -6, -216, 9, 9, 28, 5), // 9 corridor
-      box(0, -10, -244, 32, 16, 30, 14), // 10 room
-      box(0, -18, -274, 10, 9, 34, 6), // 11 drop corridor
-      box(0, -22, -310, 40, 16, 40, 0), // 12 DARK hall
-      box(0, -22, -342, 10, 10, 28, 6), // 13 corridor
-      box(0, -18, -370, 30, 18, 30, 15), // 14 room
-      box(0, -12, -400, 10, 10, 36, 6), // 15 corridor
-      box(-24, 0, -118, 30, 8, 9, 7), // 16 -X branch corridor
-      box(-46, 0, -118, 22, 16, 24, 14, true), // 17 -X branch room
-      box(0, -10, -430, 30, 18, 30, 14), // 18 room
-      box(0, -8, -450, 10, 12, 24, 6), // 19 corridor
-      box(0, -6, -470, 48, 32, 48, 0, true), // 20 reactor room
-      box(0, 18, -118, 14, 22, 14, 9), // 21 vertical alcove (off 4)
-      box(-26, -10, -244, 24, 16, 20, 12), // 22 -X branch room (off 10)
-      box(28, -22, -310, 22, 16, 20, 0), // 23 DARK side room (off 12)
-      box(0, -6, -508, 22, 18, 40, 12), // 24 exit chamber (behind sealed door)
-      box(-28, -22, -310, 22, 16, 9, 7), // 25 -X branch corridor (off 12)
-      box(-48, -22, -310, 24, 16, 22, 12), // 26 -X branch room
-      box(0, 16, -370, 14, 24, 14, 9), // 27 vertical shaft (off 14)
-      box(20, -10, -430, 26, 16, 22, 13), // 28 +X branch room (off 18)
-      box(24, 0, -58, 28, 9, 9, 7), // 29 +X branch corridor (off 2)
-      box(46, 0, -58, 22, 16, 22, 12), // 30 +X branch room
-      box(0, 12, -188, 14, 20, 14, 8), // 31 vertical alcove (off 8)
-    ];
+    const boxes: Box[] = def.boxes.map((b) =>
+      box(b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7] ?? false),
+    );
 
     const merged: number[] = [];
     const sharedMat = new THREE.MeshStandardMaterial({
-      color: 0x36475a,
+      color: def.wall,
       metalness: 0.55,
       roughness: 0.65,
       side: THREE.DoubleSide,
-      emissive: 0x16242f,
+      emissive: def.wallEmissive,
     });
     const lineMat = new THREE.LineBasicMaterial({
-      color: 0x3a7f9c,
+      color: def.line,
       transparent: true,
       opacity: 0.3,
     });
@@ -190,7 +156,6 @@ export class Level {
 
       for (const n of v) merged.push(n);
 
-      // One mesh + edge overlay per sector so far rooms can be culled.
       const sgeo = new THREE.BufferGeometry();
       sgeo.setAttribute(
         "position",
@@ -232,7 +197,7 @@ export class Level {
         );
         this.lightSrc.push({
           p: new THREE.Vector3(cx, cy, cz),
-          color: b.warm ? 0xffb060 : 0x8fe8ff,
+          color: b.warm ? def.lampWarm : def.lampCool,
           intensity: b.light * 2.4,
           range: span * 1.9,
         });
@@ -242,10 +207,8 @@ export class Level {
       }
     }
 
-    // Fixed light pool (constant light count → no shader recompiles);
-    // repositioned each frame to the sectors nearest the player.
     for (let i = 0; i < 5; i++) {
-      const l = new THREE.PointLight(0x8fe8ff, 0, 60, 1.7);
+      const l = new THREE.PointLight(def.lampCool, 0, 60, 1.7);
       this.group.add(l);
       this.lightPool.push(l);
     }
@@ -256,18 +219,17 @@ export class Level {
         (boxes[i].min[1] + boxes[i].max[1]) / 2,
         (boxes[i].min[2] + boxes[i].max[2]) / 2,
       );
-    for (const i of [2, 6, 10, 14, 17]) this.factorySpawns.push(center(i));
-    for (const i of [1, 3, 5, 11, 13, 15, 18, 21, 22, 23, 26, 27, 28, 30, 31]) {
+    for (const i of def.factoryIdx) this.factorySpawns.push(center(i));
+    for (const i of def.pickupIdx) {
       this.pickupSpawns.push(center(i).add(new THREE.Vector3(0, 2, 0)));
     }
-    // Access keys, each on the main path before its locked door.
-    this.keySpawns.push(
-      { pos: center(2).add(new THREE.Vector3(0, 3, 0)), kind: "keyblue" },
-      { pos: center(8).add(new THREE.Vector3(0, 3, 0)), kind: "keyyellow" },
-      { pos: center(12).add(new THREE.Vector3(0, 3, 0)), kind: "keyred" },
-    );
+    for (const k of def.keys) {
+      this.keySpawns.push({
+        pos: center(k.idx).add(new THREE.Vector3(0, 3, 0)),
+        kind: k.kind,
+      });
+    }
 
-    // Single static collider for the whole mine (physics needs no culling).
     const positions = new Float32Array(merged);
     const indices = new Uint32Array(positions.length / 3);
     for (let i = 0; i < indices.length; i++) indices[i] = i;
@@ -284,37 +246,34 @@ export class Level {
       roughness: 0.4,
     });
     this.reactor = new THREE.Mesh(reactorGeo, reactorMat);
-    this.reactor.position.copy(Level.CORE);
+    this.reactor.position.copy(core);
     this.group.add(this.reactor);
 
     const reactorBody = world.createRigidBody(
-      RAPIER.RigidBodyDesc.fixed().setTranslation(
-        Level.CORE.x,
-        Level.CORE.y,
-        Level.CORE.z,
-      ),
+      RAPIER.RigidBodyDesc.fixed().setTranslation(core.x, core.y, core.z),
     );
     world.createCollider(RAPIER.ColliderDesc.ball(6.5), reactorBody);
 
     this.reactorLight = new THREE.PointLight(0xff8a2a, 150, 110, 2);
-    this.reactorLight.position.copy(Level.CORE);
+    this.reactorLight.position.copy(core);
     this.group.add(this.reactorLight);
 
-    this.group.add(new THREE.AmbientLight(0x6f86a0, 2.1));
-    const fill = new THREE.HemisphereLight(0x9fc4e8, 0x202830, 1.4);
-    this.group.add(fill);
-
-    this.corePosition = Level.CORE.clone();
+    this.group.add(new THREE.AmbientLight(def.ambient, def.ambientI));
+    this.group.add(
+      new THREE.HemisphereLight(def.lampCool, 0x202830, 1.2),
+    );
 
     // Extra hostiles guarding the reactor.
     this.enemySpawns.push(
-      Level.CORE.clone().add(new THREE.Vector3(16, 9, 12)),
-      Level.CORE.clone().add(new THREE.Vector3(-15, -8, -10)),
-      Level.CORE.clone().add(new THREE.Vector3(12, -10, 14)),
+      core.clone().add(new THREE.Vector3(14, 8, 10)),
+      core.clone().add(new THREE.Vector3(-13, -7, -9)),
     );
 
-    // --- Spawn at the start room, facing into the mine (-Z) ---
-    this.spawnPosition = new THREE.Vector3(0, 0, 2);
+    this.spawnPosition = new THREE.Vector3(
+      def.spawn[0],
+      def.spawn[1],
+      def.spawn[2],
+    );
     const m = new THREE.Matrix4().lookAt(
       new THREE.Vector3(0, 0, 0),
       new THREE.Vector3(0, 0, -1),
@@ -334,12 +293,10 @@ export class Level {
         1.2 + pulse * 0.4;
     }
 
-    // Sector culling: only draw rooms near the player.
     for (const s of this.sectors) {
       s.group.visible = playerPos.distanceToSquared(s.c) < s.r2;
     }
 
-    // Park the light pool on the nearest light sources.
     const src = this.lightSrc;
     const nearest = src
       .map((s, i) => ({ i, d: playerPos.distanceToSquared(s.p) }))
@@ -359,7 +316,6 @@ export class Level {
     }
   }
 
-  /** Called when the player blows the reactor. */
   destroyReactor() {
     this.reactor.visible = false;
     this.reactorLight.intensity = 0;
