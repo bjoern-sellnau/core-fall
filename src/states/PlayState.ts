@@ -433,10 +433,10 @@ export class PlayState implements GameState {
           this.ship.model.visible = true;
           this.deathFx.reset();
           this.escapeStart.copy(this.ship.position);
-          this.escapeDir
-            .set(0, 0, -1)
-            .applyQuaternion(this.ship.quaternion)
-            .normalize();
+          // Fixed clean escape axis (out the back of the mine) and a
+          // straight-flying pose so the cinematic reads clearly.
+          this.escapeDir.set(0, 0, -1);
+          this.ship.quaternion.copy(this.level.spawnQuaternion);
           this.game.input.exitPointerLock();
           this.game.music.setScene("victory");
           return;
@@ -581,10 +581,11 @@ export class PlayState implements GameState {
     this.pause.classList.add("hidden");
     this.winTimer += dt;
 
-    // Descent-style external shot: camera sits out in space watching the
-    // mine; the ship bursts out toward it with the mine exploding behind.
-    const CAM_DIST = 46;
-    const dist = 22 * this.winTimer + 8 * this.winTimer * this.winTimer;
+    // Descent-style external shot: a fixed camera out in space framed
+    // on the mine mouth; the ship flies out of it toward the camera,
+    // with explosions blooming behind it inside the mine.
+    const CAM_DIST = 50;
+    const dist = 14 * this.winTimer + 6 * this.winTimer * this.winTimer;
     this.ship.position
       .copy(this.escapeStart)
       .addScaledVector(this.escapeDir, dist);
@@ -599,32 +600,31 @@ export class PlayState implements GameState {
     this.camera.position
       .copy(this.escapeStart)
       .addScaledVector(this.escapeDir, CAM_DIST)
-      .addScaledVector(worldUp, 7)
-      .addScaledVector(side, 6);
-    // Watch the ship approach, then turn back to the detonating mine.
-    if (dist < CAM_DIST - 4) this.camera.lookAt(this.ship.position);
-    else this.camera.lookAt(this.escapeStart);
+      .addScaledVector(worldUp, 6)
+      .addScaledVector(side, 5);
+    // Stay framed on the mine mouth so the ship grows as it nears.
+    this.camera.lookAt(this.escapeStart);
 
-    this.escapeLight.intensity = 170;
+    this.escapeLight.intensity = 180;
     this.escapeLight.position
       .copy(this.ship.position)
       .addScaledVector(worldUp, 2);
     this.level.update(dt * 0.2, this.ship.position);
 
-    // Chain of explosions behind the ship, back toward the mine.
+    // Chain of explosions at/behind the mine mouth (behind the ship).
     this.deathFx.update(dt);
     this.winBoomTimer -= dt;
-    if (this.winBoomTimer <= 0 && this.winTimer < 5) {
-      this.winBoomTimer = 0.26;
-      const back = Math.random() * 18;
+    if (this.winBoomTimer <= 0 && this.winTimer < 6) {
+      this.winBoomTimer = 0.24;
+      const back = 2 + Math.random() * 24;
       const p = this.escapeStart
         .clone()
-        .addScaledVector(this.escapeDir, back)
+        .addScaledVector(this.escapeDir, -back)
         .add(
           new THREE.Vector3(
-            (Math.random() - 0.5) * 16,
-            (Math.random() - 0.5) * 16,
-            (Math.random() - 0.5) * 16,
+            (Math.random() - 0.5) * 18,
+            (Math.random() - 0.5) * 18,
+            (Math.random() - 0.5) * 18,
           ),
         );
       this.deathFx.trigger(p, { laser: 0, rockets: 0 });
@@ -632,11 +632,11 @@ export class PlayState implements GameState {
     }
 
     // Whiteout flash as the mine goes up.
-    const flash = Math.min(0.85, Math.max(0, (this.winTimer - 3.4) / 2));
+    const flash = Math.min(0.85, Math.max(0, (this.winTimer - 5) / 1.6));
     this.flashEl.style.background = "#dff0ff";
     this.flashEl.style.opacity = `${flash}`;
 
-    if (this.winTimer > 5) {
+    if (this.winTimer > 6.5) {
       this.deathTitleEl.textContent = "MISSION COMPLETE";
       this.deathTitleEl.style.color = "#5dff8a";
       this.deathSubEl.textContent = "YOU ESCAPED — PRESS SPACE FOR MENU";
