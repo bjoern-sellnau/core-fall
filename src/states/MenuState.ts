@@ -1,224 +1,363 @@
-import * as THREE from "three";
 import type { Game } from "../engine/Game";
 import type { GameState } from "./GameState";
 import { PlayState } from "./PlayState";
 import { BriefingState } from "./BriefingState";
 import { LEVELS } from "../world/levels";
 
-/** Main menu: COREFALL title screen with a slowly tumbling core behind it. */
+const DIFF = ["ROOKIE", "PILOT", "ACE", "VETERAN", "INSANE"];
+
+/** Retro 90s Descent-style COREFALL title screen (from Claude Design). */
 export class MenuState implements GameState {
   private game!: Game;
-  private scene = new THREE.Scene();
-  private camera = new THREE.PerspectiveCamera(60, 1, 0.1, 100);
-  private core!: THREE.Object3D;
   private root!: HTMLElement;
+  private menuEl!: HTMLElement;
+  private idleEl!: HTMLElement;
+  private pressEl!: HTMLElement;
+  private listEl!: HTMLElement;
+  private titleEl!: HTMLElement;
+  private toastEl!: HTMLElement;
+
+  private armed = false;
+  private view: "main" | "missions" | "options" = "main";
+  private sel = 0;
+  private items: HTMLElement[] = [];
+  private depthTimer = 0;
+  private toastTimer = 0;
 
   enter(game: Game) {
     this.game = game;
 
-    const { width, height } = game.size;
-    this.camera.aspect = width / height;
-    this.camera.position.set(0, 0, 16);
-    this.camera.updateProjectionMatrix();
-
-    this.scene.fog = new THREE.FogExp2(0x04060a, 0.05);
-
-    const coreGroup = new THREE.Group();
-    coreGroup.add(
-      new THREE.Mesh(
-        new THREE.IcosahedronGeometry(5, 1),
-        new THREE.MeshStandardMaterial({
-          color: 0x123040,
-          emissive: 0xff7b1a,
-          emissiveIntensity: 0.7,
-          metalness: 0.4,
-          roughness: 0.4,
-        }),
-      ),
-    );
-    coreGroup.add(
-      new THREE.LineSegments(
-        new THREE.WireframeGeometry(new THREE.IcosahedronGeometry(7, 1)),
-        new THREE.LineBasicMaterial({
-          color: 0x38f0e6,
-          transparent: true,
-          opacity: 0.4,
-        }),
-      ),
-    );
-    this.core = coreGroup;
-    this.scene.add(coreGroup);
-
-    this.scene.add(new THREE.AmbientLight(0x223344, 1.2));
-    const key = new THREE.PointLight(0xff8a2a, 200, 60, 2);
-    key.position.set(6, 4, 10);
-    this.scene.add(key);
-
-    const names = ["ROOKIE", "PILOT", "ACE", "VETERAN", "INSANE"];
-    const diffBtns = names
-      .map(
-        (n, i) =>
-          `<button class="menu__diff-btn" data-d="${i + 1}">${i + 1} ${n}</button>`,
-      )
-      .join("");
-
     this.root = document.createElement("div");
-    this.root.className = "menu";
+    this.root.className = "cf-title stage-wrap";
     this.root.innerHTML = `
-      <h1 class="menu__title">COREFALL</h1>
-      <p class="menu__subtitle">DESCENT INTO THE CORE</p>
-      <div class="menu__diff-label">MODE</div>
-      <div class="menu__diff" id="cf-mode">
-        <button class="menu__diff-btn" data-m="story">STORY</button>
-        <button class="menu__diff-btn" data-m="mission">MISSIONS</button>
-      </div>
-      <div class="menu__diff-label">MISSION</div>
-      <div class="menu__diff" id="cf-level">
-        ${LEVELS.map(
-          (l, i) =>
-            `<button class="menu__diff-btn" data-l="${i}">${i + 1} ${l.name}</button>`,
-        ).join("")}
-      </div>
-      <div class="menu__diff-label">DIFFICULTY</div>
-      <div class="menu__diff" id="cf-diff">${diffBtns}</div>
-      <div class="menu__diff-label">MENU THEME</div>
-      <div class="menu__diff" id="cf-theme">
-        <button class="menu__diff-btn" data-t="2">V2 POP</button>
-        <button class="menu__diff-btn" data-t="1">V1 CALM</button>
-      </div>
-      <div class="menu__buttons">
-        <button class="menu__btn" id="cf-start">START MISSION</button>
-      </div>
-      <div class="menu__controls">
-        <b>Mouse</b> aim &nbsp;|&nbsp; <b>LMB</b> fire &nbsp;|&nbsp; <b>1-5</b> weapon &nbsp;|&nbsp; <b>0</b> rockets &nbsp;|&nbsp; <b>W/S</b> thrust<br />
-        <b>A/D</b> strafe &nbsp;|&nbsp; <b>Space/C</b> up&middot;down &nbsp;|&nbsp; <b>Q</b> roll&nbsp;L &nbsp;|&nbsp; <b>E</b> roll&nbsp;R &nbsp;|&nbsp; <b>R</b> level roll &nbsp;|&nbsp; <b>H</b> reset height &nbsp;|&nbsp; <b>Shift</b> boost<br />
-        <b>V</b> view &nbsp;|&nbsp; <b>M</b> map &nbsp;|&nbsp; <b>Esc</b> release mouse &nbsp;|&nbsp; <b>N</b> music on/off
+      <div class="stage" id="t-stage">
+        <div class="wall l"></div>
+        <div class="wall r"></div>
+        <div class="stars"></div>
+        <div class="haze"></div>
+        <div class="grid-floor"></div>
+        <div class="horizon"></div>
+        <div class="beam b1" id="t-beam1"></div>
+        <div class="beam b2" id="t-beam2"></div>
+        <svg class="tunnel" viewBox="-500 -250 1000 500" id="t-tunnel"></svg>
+        <div id="t-cores"></div>
+        <div class="bracket tl"></div><div class="bracket tr"></div>
+        <div class="bracket bl"></div><div class="bracket br"></div>
+        <div class="hud">
+          <div class="tl">
+            <div><span class="tag">SYS</span> ::: COREFALL.EXE v1.04</div>
+            <div><span class="tag">MEM</span> 0x7F.AC00 — OK</div>
+            <div><span class="tag">VID</span> VGA 320×240 / 256C</div>
+            <div><span class="tag">DRILL</span> <span class="ok">ARMED</span></div>
+          </div>
+          <div class="tr">
+            <div><span class="tag">DEPTH</span> -<span id="t-depth">04127</span> M</div>
+            <div><span class="tag">O₂</span> 88% <span class="bar"><i style="width:88%;background:#7dd14a"></i></span></div>
+            <div><span class="tag">HEAT</span> 412°C <span class="bar"><i style="width:64%"></i></span></div>
+            <div><span class="warn">ALERT</span> HOSTILE RIGS · SECTOR XR-9</div>
+          </div>
+        </div>
+        <div class="core-mark"></div>
+        <div class="logo-wrap">
+          <div class="kicker">Nexus<span class="sep">◆</span>Mining<span class="sep">◆</span>Cooperation</div>
+          <div class="logo" aria-label="COREFALL">COREFALL</div>
+          <div class="subtitle"><span class="em">Off-World</span> <span class="pipe">|</span> Mining Bots <span class="pipe">|</span> Have <span class="em">Gone Rogue</span></div>
+          <div class="hazard"></div>
+        </div>
+        <nav class="menu" id="t-menu" aria-label="Main menu" hidden>
+          <span class="nail tl"></span><span class="nail tr"></span>
+          <span class="nail bl"></span><span class="nail br"></span>
+          <h3><span id="t-mtitle">NEXUS DATA LINK NETWORK</span></h3>
+          <ul id="t-list"></ul>
+        </nav>
+        <div class="idle-hint" id="t-idle">
+          <div class="warn-line">⚠  TRANSMISSION FROM XR-9 · ORE COLONY OFFLINE  ⚠</div>
+          <div class="press big">PRESS <span class="k">ENTER</span> TO ACKNOWLEDGE</div>
+          <div class="sub-line">· · ·  ROGUE EXTRACTION UNITS DETECTED  · · ·</div>
+        </div>
+        <div class="press post" id="t-press" hidden>USE <span class="k">▲ ▼</span> TO SELECT · <span class="k">ENTER</span> TO CONFIRM</div>
+        <div class="credit">
+          <span>© 2026 LOONA! DESIGNS</span>
+          <span class="mid">A GAME BY <span class="hot">BJOERN S.</span> · CODE BY <span class="hot">CLAUDE CODE</span></span>
+          <span>RATED M · NOT FOR RESALE</span>
+        </div>
+        <div class="glitch"></div>
+        <div class="crt"></div>
+        <div class="vignette"></div>
+        <div class="toast" id="t-toast">LOADING…</div>
       </div>
     `;
     game.container.appendChild(this.root);
 
-    const diffButtons = this.root.querySelectorAll<HTMLButtonElement>(
-      "#cf-diff .menu__diff-btn",
-    );
-    const paint = () => {
-      diffButtons.forEach((b) => {
-        const on = Number(b.dataset.d) === this.game.difficulty;
-        b.classList.toggle("menu__diff-btn--on", on);
-      });
-    };
-    diffButtons.forEach((b) => {
-      b.onclick = () => {
-        this.game.difficulty = Number(b.dataset.d);
-        paint();
-      };
-    });
+    this.menuEl = this.root.querySelector<HTMLElement>("#t-menu")!;
+    this.idleEl = this.root.querySelector<HTMLElement>("#t-idle")!;
+    this.pressEl = this.root.querySelector<HTMLElement>("#t-press")!;
+    this.listEl = this.root.querySelector<HTMLElement>("#t-list")!;
+    this.titleEl = this.root.querySelector<HTMLElement>("#t-mtitle")!;
+    this.toastEl = this.root.querySelector<HTMLElement>("#t-toast")!;
 
-    const modeBtns = this.root.querySelectorAll<HTMLButtonElement>(
-      "#cf-mode .menu__diff-btn",
-    );
-    const levelBtns = this.root.querySelectorAll<HTMLButtonElement>(
-      "#cf-level .menu__diff-btn",
-    );
-    const startBtn =
-      this.root.querySelector<HTMLButtonElement>("#cf-start")!;
-    const paintModes = () => {
-      modeBtns.forEach((b) =>
-        b.classList.toggle(
-          "menu__diff-btn--on",
-          b.dataset.m === this.game.mode,
-        ),
-      );
-      levelBtns.forEach((b) =>
-        b.classList.toggle(
-          "menu__diff-btn--on",
-          Number(b.dataset.l) === this.game.levelIndex,
-        ),
-      );
-      startBtn.textContent =
-        this.game.mode === "story" ? "START STORY" : "START MISSION";
-    };
-    modeBtns.forEach((b) => {
-      b.onclick = () => {
-        this.game.mode = b.dataset.m as "story" | "mission";
-        paintModes();
-      };
-    });
-    levelBtns.forEach((b) => {
-      b.onclick = () => {
-        this.game.levelIndex = Number(b.dataset.l);
-        this.game.mode = "mission";
-        paintModes();
-      };
-    });
-    paintModes();
+    this.buildScenery();
+    this.renderList();
 
-    const themeBtns = this.root.querySelectorAll<HTMLButtonElement>(
-      "#cf-theme .menu__diff-btn",
-    );
-    const paintTheme = () => {
-      themeBtns.forEach((b) => {
-        const on = Number(b.dataset.t) === this.game.music.menuTheme;
-        b.classList.toggle("menu__diff-btn--on", on);
-      });
-    };
-    themeBtns.forEach((b) => {
-      b.onclick = () => {
-        // Clicking is a gesture: make sure audio is running, then
-        // switch the menu track so it can be previewed right away.
-        this.game.music.start();
-        this.game.sfx.start();
-        this.game.music.setScene("menu");
-        this.game.music.setMenuTheme(Number(b.dataset.t) as 1 | 2);
-        paintTheme();
-      };
-    });
-    paintTheme();
-    paint();
-
-    const start = () => {
-      this.game.music.start();
-      this.game.sfx.start();
-      if (this.game.mode === "story") {
-        this.game.levelIndex = 0;
-        this.game.setState(new BriefingState());
-      } else {
-        this.game.music.setScene("game");
-        this.game.setState(new PlayState());
-      }
-    };
-    startBtn.onclick = start;
-    this.onKey = (e: KeyboardEvent) => {
-      if (e.code === "Enter") start();
-    };
-    // Browsers need a gesture before audio: kick off menu music on the
-    // first interaction anywhere in the menu.
-    this.onPointer = () => {
-      this.game.music.start();
-      this.game.sfx.start();
-      this.game.music.setScene("menu");
-    };
     window.addEventListener("keydown", this.onKey);
-    window.addEventListener("pointerdown", this.onPointer, { once: true });
+    window.addEventListener("resize", this.fit);
+    this.root.addEventListener("click", this.onClick);
+    this.fit();
+    requestAnimationFrame(this.fit);
   }
 
-  private onKey: (e: KeyboardEvent) => void = () => {};
-  private onPointer: () => void = () => {};
+  // --- fixed-stage scaling (from the design) ---
+  private fit = () => {
+    const stage = this.root.querySelector<HTMLElement>("#t-stage");
+    if (!stage) return;
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+    const s = Math.min(w / 1920, h / 1080);
+    stage.style.transform = `scale(${s})`;
+    stage.style.margin = `${(1080 * s - 1080) / 2}px ${(1920 * s - 1920) / 2}px`;
+  };
+
+  private buildScenery() {
+    const svg = this.root.querySelector("#t-tunnel")!;
+    const N = 14;
+    for (let i = 0; i < N; i++) {
+      const r = document.createElementNS(
+        "http://www.w3.org/2000/svg",
+        "polygon",
+      );
+      const pts: string[] = [];
+      const sides = 8;
+      const R = 480;
+      for (let k = 0; k < sides; k++) {
+        const a = (k / sides) * Math.PI * 2 + Math.PI / sides;
+        pts.push(
+          `${(Math.cos(a) * R).toFixed(1)},${(Math.sin(a) * R * 0.55).toFixed(1)}`,
+        );
+      }
+      r.setAttribute("points", pts.join(" "));
+      r.setAttribute("class", "ring" + (i % 3 === 0 ? " b" : ""));
+      (r as SVGElement).style.animationDelay = `${-(i / N) * 4.2}s`;
+      svg.appendChild(r);
+    }
+
+    const cores = this.root.querySelector("#t-cores")!;
+    for (let i = 0; i < 18; i++) {
+      const c = document.createElement("div");
+      c.className = "core";
+      c.style.left = `${Math.random() * 1920}px`;
+      const d = 6 + Math.random() * 9;
+      c.style.animationDuration = `${d}s`;
+      c.style.animationDelay = `${-Math.random() * d}s`;
+      c.style.opacity = `${0.35 + Math.random() * 0.65}`;
+      c.style.transform = `scale(${0.5 + Math.random() * 1.4}) rotate(45deg)`;
+      cores.appendChild(c);
+    }
+
+    for (const id of ["#t-beam1", "#t-beam2"]) {
+      const b = this.root.querySelector(id)!;
+      for (let i = 0; i < 22; i++) {
+        const r = document.createElement("span");
+        r.className = "rivet";
+        r.style.left = `${(i + 0.5) * (100 / 22)}%`;
+        b.appendChild(r);
+      }
+    }
+  }
+
+  // --- menu views ---
+  private renderList() {
+    let html = "";
+    if (this.view === "main") {
+      this.titleEl.textContent = "NEXUS DATA LINK NETWORK";
+      const rows = [
+        ["Story", ""],
+        ["Missions", `${LEVELS.length} OPS`],
+        ["Options", "CFG"],
+        ["Level Editor", "— LOCKED —"],
+      ];
+      html = rows
+        .map(
+          ([l, h], i) =>
+            `<li data-i="${i}"${i === 3 ? ' class="lock"' : ""}><span class="cursor">▶</span><span class="label">${l}</span><span class="hint">${h}</span></li>`,
+        )
+        .join("");
+    } else if (this.view === "missions") {
+      this.titleEl.textContent = "MISSION ARCHIVE";
+      html =
+        LEVELS.map(
+          (lv, i) =>
+            `<li data-i="${i}"><span class="cursor">▶</span><span class="label">${i + 1}. ${lv.name}</span><span class="hint">TIER ${lv.tier}</span></li>`,
+        ).join("") +
+        `<li data-i="${LEVELS.length}"><span class="cursor">▶</span><span class="label">Back</span><span class="hint"></span></li>`;
+    } else {
+      this.titleEl.textContent = "OPERATOR CONFIG";
+      html = `
+        <li data-i="0"><span class="cursor">▶</span><span class="label">Difficulty</span><span class="hint">${this.game.difficulty} ${DIFF[this.game.difficulty - 1]}</span></li>
+        <li data-i="1"><span class="cursor">▶</span><span class="label">Menu Theme</span><span class="hint">${this.game.music.menuTheme === 2 ? "V2 POP" : "V1 CALM"}</span></li>
+        <li data-i="2"><span class="cursor">▶</span><span class="label">Back</span><span class="hint"></span></li>`;
+    }
+    this.listEl.innerHTML = html;
+    this.items = [...this.listEl.querySelectorAll<HTMLElement>("li")];
+    this.sel = 0;
+    this.paint();
+    this.items.forEach((el, idx) => {
+      el.addEventListener("mouseenter", () => {
+        this.sel = idx;
+        this.paint();
+      });
+      el.addEventListener("click", () => this.choose(idx));
+    });
+  }
+
+  private paint() {
+    this.items.forEach((el, idx) =>
+      el.classList.toggle("sel", idx === this.sel),
+    );
+  }
+
+  private arm() {
+    if (this.armed) return;
+    this.armed = true;
+    this.idleEl.style.display = "none";
+    this.menuEl.hidden = false;
+    this.menuEl.classList.add("show");
+    this.pressEl.hidden = false;
+    this.game.music.start();
+    this.game.sfx.start();
+    this.game.music.setScene("menu");
+    this.game.sfx.weaponSelect();
+  }
+
+  private toast(txt: string, ok: boolean) {
+    this.toastEl.textContent = txt;
+    this.toastEl.style.borderColor = ok ? "#ffd166" : "#ff2e63";
+    this.toastEl.style.display = "block";
+    this.toastTimer = 0.9;
+  }
+
+  private startLevel() {
+    this.game.music.setScene("game");
+    this.game.setState(new PlayState());
+  }
+
+  private choose(idx: number) {
+    this.sel = idx;
+    this.paint();
+    if (this.view === "main") {
+      if (idx === 0) {
+        this.game.mode = "story";
+        this.game.levelIndex = 0;
+        this.game.sfx.pickup();
+        this.game.setState(new BriefingState());
+      } else if (idx === 1) {
+        this.view = "missions";
+        this.game.sfx.weaponSelect();
+        this.renderList();
+      } else if (idx === 2) {
+        this.view = "options";
+        this.game.sfx.weaponSelect();
+        this.renderList();
+      } else {
+        this.toast("— LOCKED —", false);
+        this.game.sfx.hit();
+      }
+    } else if (this.view === "missions") {
+      if (idx === LEVELS.length) {
+        this.view = "main";
+        this.game.sfx.weaponSelect();
+        this.renderList();
+      } else {
+        this.game.mode = "mission";
+        this.game.levelIndex = idx;
+        this.game.sfx.pickup();
+        this.startLevel();
+      }
+    } else {
+      if (idx === 0) {
+        this.game.difficulty = (this.game.difficulty % 5) + 1;
+        this.game.sfx.weaponSelect();
+        this.renderList();
+        this.sel = 0;
+        this.paint();
+      } else if (idx === 1) {
+        this.game.music.setMenuTheme(this.game.music.menuTheme === 2 ? 1 : 2);
+        this.game.sfx.weaponSelect();
+        this.renderList();
+        this.sel = 1;
+        this.paint();
+      } else {
+        this.view = "main";
+        this.game.sfx.weaponSelect();
+        this.renderList();
+      }
+    }
+  }
+
+  private onKey = (e: KeyboardEvent) => {
+    if (!this.armed) {
+      if (e.key === "Enter" || e.key === " ") {
+        this.arm();
+        e.preventDefault();
+      }
+      return;
+    }
+    if (e.key === "ArrowDown") {
+      this.sel = (this.sel + 1) % this.items.length;
+      this.paint();
+      this.game.sfx.weaponSelect();
+      e.preventDefault();
+    } else if (e.key === "ArrowUp") {
+      this.sel = (this.sel - 1 + this.items.length) % this.items.length;
+      this.paint();
+      this.game.sfx.weaponSelect();
+      e.preventDefault();
+    } else if (e.key === "Enter") {
+      this.choose(this.sel);
+      e.preventDefault();
+    } else if (e.key === "Escape") {
+      if (this.view !== "main") {
+        this.view = "main";
+        this.renderList();
+        this.game.sfx.weaponSelect();
+      } else {
+        this.armed = false;
+        this.menuEl.classList.remove("show");
+        this.menuEl.hidden = true;
+        this.pressEl.hidden = true;
+        this.idleEl.style.display = "block";
+        this.game.sfx.hit();
+      }
+    }
+  };
+
+  private onClick = (e: MouseEvent) => {
+    if (!this.armed && !(e.target as HTMLElement).closest("#t-menu")) {
+      this.arm();
+    }
+  };
 
   update(dt: number) {
-    this.core.rotation.y += dt * 0.4;
-    this.core.rotation.x += dt * 0.15;
-    this.game.renderer.render(this.scene, this.camera);
+    this.depthTimer += dt;
+    if (this.depthTimer >= 0.7) {
+      this.depthTimer = 0;
+      const el = this.root.querySelector<HTMLElement>("#t-depth");
+      if (el) {
+        const d =
+          (parseInt(el.textContent || "4127", 10) || 4127) +
+          1 +
+          Math.floor(Math.random() * 3);
+        el.textContent = String(d).padStart(5, "0");
+      }
+    }
+    if (this.toastTimer > 0) {
+      this.toastTimer -= dt;
+      if (this.toastTimer <= 0) this.toastEl.style.display = "none";
+    }
   }
 
   exit() {
     window.removeEventListener("keydown", this.onKey);
-    window.removeEventListener("pointerdown", this.onPointer);
+    window.removeEventListener("resize", this.fit);
     this.root.remove();
-    this.scene.traverse((o) => {
-      const m = o as THREE.Mesh;
-      m.geometry?.dispose?.();
-      const mat = m.material as THREE.Material | undefined;
-      mat?.dispose?.();
-    });
   }
 }

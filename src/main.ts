@@ -1,4 +1,5 @@
 import "./style.css";
+import "./title.css";
 import { Game } from "./engine/Game";
 import { MenuState } from "./states/MenuState";
 import { initRapier } from "./physics/Physics";
