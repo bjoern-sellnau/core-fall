@@ -92,6 +92,7 @@ export class PlayState implements GameState {
   private winBoomTimer = 0;
   private winInit = false;
   private starfield!: THREE.Points;
+  private warp!: THREE.LineSegments;
   private deathTimer = 0;
   private spaceArmed = false;
   private readonly deathPos = new THREE.Vector3();
@@ -197,6 +198,37 @@ export class PlayState implements GameState {
       this.scene.add(this.starfield);
     }
 
+    // Star Wars-style hyperdrive streak lines (hidden until the jump).
+    {
+      const n = 260;
+      const pos = new Float32Array(n * 6);
+      for (let i = 0; i < n; i++) {
+        const x = (Math.random() - 0.5) * 90;
+        const y = (Math.random() - 0.5) * 60;
+        const zz = (Math.random() - 0.5) * 220;
+        pos[i * 6] = x;
+        pos[i * 6 + 1] = y;
+        pos[i * 6 + 2] = zz;
+        pos[i * 6 + 3] = x;
+        pos[i * 6 + 4] = y;
+        pos[i * 6 + 5] = zz + 5;
+      }
+      const wg = new THREE.BufferGeometry();
+      wg.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+      this.warp = new THREE.LineSegments(
+        wg,
+        new THREE.LineBasicMaterial({
+          color: 0xcfe6ff,
+          transparent: true,
+          opacity: 0.9,
+          blending: THREE.AdditiveBlending,
+          depthWrite: false,
+        }),
+      );
+      this.warp.visible = false;
+      this.scene.add(this.warp);
+    }
+
     // Lights the ship during the escape cinematic (idle at 0 otherwise).
     this.escapeLight = new THREE.PointLight(0xbfe6ff, 0, 120, 1.4);
     this.scene.add(this.escapeLight);
@@ -254,12 +286,16 @@ export class PlayState implements GameState {
     this.keysEl = this.root.querySelector<HTMLElement>("#cf-keys")!;
 
     this.pause = document.createElement("div");
-    this.pause.className = "menu";
+    this.pause.className = "cf-pause hidden";
     this.pause.innerHTML = `
-      <h1 class="menu__title" style="font-size:clamp(2rem,7vw,4rem)">PAUSED</h1>
-      <div class="menu__buttons">
-        <button class="menu__btn" id="cf-resume">RESUME</button>
-        <button class="menu__btn" id="cf-menu">MAIN MENU</button>
+      <div class="cf-pause-box">
+        <div class="cf-pause-kick" id="cf-ptag">PAUSED</div>
+        <div class="cf-pause-title" id="cf-ptitle">SYSTEMS HOLD</div>
+        <div class="cf-pause-btns">
+          <button class="cf-pause-btn" id="cf-resume">ENGAGE</button>
+          <button class="cf-pause-btn" id="cf-menu">ABORT TO MENU</button>
+        </div>
+        <div class="cf-pause-hint">CLICK ANYWHERE TO FLY · ESC RELEASES MOUSE</div>
       </div>
     `;
     game.container.appendChild(this.pause);
@@ -394,6 +430,17 @@ export class PlayState implements GameState {
     }
 
     this.pause.classList.toggle("hidden", locked);
+    if (!locked) {
+      const tag = this.pause.querySelector<HTMLElement>("#cf-ptag")!;
+      const ttl = this.pause.querySelector<HTMLElement>("#cf-ptitle")!;
+      if (this.spawned) {
+        tag.textContent = "PAUSED";
+        ttl.textContent = "SYSTEMS HOLD";
+      } else {
+        tag.textContent = `MISSION ${this.game.levelIndex + 1}`;
+        ttl.textContent = LEVELS[this.game.levelIndex].name;
+      }
+    }
 
     const vDown = this.game.input.isDown("KeyV");
     if (locked && vDown && !this.viewKeyDown) {
@@ -625,46 +672,59 @@ export class PlayState implements GameState {
       this.ship.model.rotation.set(0, Math.PI, 0); // nose along +Z
     }
 
-    const T_HYPER = 3.4; // hyperdrive kicks in
-    const T_JUMP = 4.0; // light-speed flash starts
-    const T_BLACK = 4.5; // pure black screen
-    const T_TEXT = 5.1; // completion text
+    const T_HYPER = 3.2; // hyperdrive engages
+    const T_JUMP = 4.4; // light-speed flash
+    const T_BLACK = 4.9; // pure black screen
+    const T_TEXT = 5.6; // completion text
     const t = this.winTimer;
 
-    // Ship flies forward (+Z); after hyperdrive it streaks away.
-    let z = -30 + (24 * t + 6 * t * t);
-    if (t > T_HYPER) z += 1400 * (t - T_HYPER) * (t - T_HYPER);
+    // Ship cruises out (+Z); on hyperdrive it shoots away to a point.
+    let z = -10 + 18 * t + 4 * t * t;
+    if (t > T_HYPER) z += 900 * (t - T_HYPER) * (t - T_HYPER);
     this.ship.position.set(0, 0, z);
     this.ship.model.position.copy(this.ship.position);
     this.escapeLight.intensity = 190;
     this.escapeLight.position.set(0, 4, z + 3);
 
-    const gap = 15 + t * 6;
-    this.camera.position.set(2, 3, -30 + 24 * t + gap);
-    this.camera.lookAt(0, 0, Math.min(z, -30 + 24 * t + 30));
+    // Smooth 3/4-rear camera that steadily pulls back (no swinging).
+    const back = 13 + t * 7;
+    const cz = Math.min(z, -10 + 18 * t + 4 * t * t);
+    this.camera.position.set(-6, 3.4, cz - back);
+    this.camera.lookAt(0, 0.5, cz + 8);
 
     if (t > T_HYPER && !this.hyperDone) {
       this.hyperDone = true;
       this.game.sfx.spawn(); // hyperdrive whoosh
     }
 
-    // Explosion chain — only until the jump.
+    // Explosion chain behind the ship — only before the jump.
     this.deathFx.update(dt);
     this.winBoomTimer -= dt;
     if (this.winBoomTimer <= 0 && t < T_HYPER) {
-      this.winBoomTimer = 0.2;
+      this.winBoomTimer = 0.22;
       this.deathFx.trigger(
         new THREE.Vector3(
           (Math.random() - 0.5) * 26,
           (Math.random() - 0.5) * 20,
-          z - 22 - Math.random() * 55,
+          z - 24 - Math.random() * 55,
         ),
         { laser: 0, rockets: 0 },
       );
       this.game.sfx.explosion(2.6);
     }
 
-    // Hyperdrive: white blink → pure black screen, then the text.
+    // Hyperdrive starlines: streaks erupt and stretch past the camera.
+    if (t > T_HYPER && t < T_BLACK) {
+      this.starfield.visible = false;
+      this.warp.visible = true;
+      const k = Math.min(1, (t - T_HYPER) / (T_JUMP - T_HYPER));
+      this.warp.position.z = this.camera.position.z + 40;
+      this.warp.scale.set(1, 1, 1 + k * 60);
+      (this.warp.material as THREE.LineBasicMaterial).opacity =
+        0.35 + k * 0.65;
+    }
+
+    // White blink → pure black, then the text.
     if (t < T_JUMP) {
       this.winFade.style.opacity = "0";
     } else if (t < T_BLACK) {
@@ -674,6 +734,7 @@ export class PlayState implements GameState {
       this.winFade.style.background = "#000";
       this.winFade.style.opacity = "1";
       this.starfield.visible = false;
+      this.warp.visible = false;
       this.ship.model.visible = false;
     }
 
@@ -765,6 +826,8 @@ export class PlayState implements GameState {
     this.mapView.remove();
     this.starfield.geometry.dispose();
     (this.starfield.material as THREE.Material).dispose();
+    this.warp.geometry.dispose();
+    (this.warp.material as THREE.Material).dispose();
     this.deathFx.dispose();
     this.doors.dispose();
     this.pickups.dispose();
