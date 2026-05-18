@@ -142,6 +142,7 @@ export class PlayState implements GameState {
   private chronoActive = 0;
   private chronoCool = 0;
   private fireWasDown = false;
+  private chargeSnd = false;
   private digitDown: boolean[] = [];
 
   private phase: "play" | "dead" | "gameover" | "won" = "play";
@@ -532,6 +533,13 @@ export class PlayState implements GameState {
 
   private onClick: () => void = () => {};
 
+  /** Drives the looping recharge sound, de-duped so it never stutters. */
+  private setCharge(on: boolean) {
+    if (on === this.chargeSnd) return;
+    this.chargeSnd = on;
+    this.game.sfx.energyCharge(on);
+  }
+
   update(dt: number) {
     const nDown = this.game.input.isAction("muteMusic");
     if (nDown && !this.musicKeyDown) this.game.music.toggleMute();
@@ -543,11 +551,13 @@ export class PlayState implements GameState {
     }
 
     if (this.phase === "won") {
+      this.setCharge(false);
       this.updateWin(dt);
       this.game.renderer.render(this.scene, this.camera);
       return;
     }
     if (this.phase !== "play") {
+      this.setCharge(false);
       this.updateDeath(dt);
       this.game.renderer.render(this.scene, this.camera);
       return;
@@ -561,6 +571,7 @@ export class PlayState implements GameState {
     this.mapKeyDown = mDown;
 
     if (this.mapView.visible) {
+      this.setCharge(false);
       this.pause.classList.add("hidden");
       this.tmpFwd.set(0, 0, -1).applyQuaternion(this.ship.quaternion);
       this.mapView.render(
@@ -594,6 +605,7 @@ export class PlayState implements GameState {
     }
     this.viewKeyDown = vDown;
 
+    if (!locked) this.setCharge(false);
     if (locked) {
       if (!this.spawned) {
         this.spawned = true;
@@ -669,14 +681,15 @@ export class PlayState implements GameState {
           break;
         }
       }
-      if (charging && this.weapons.energy01 < 1) {
+      const recharging = charging && this.weapons.energy01 < 1;
+      if (recharging) {
         // Fast up to the base 100, then a slow trickle into the
         // upgraded 100–200 overcharge band.
         const over = this.weapons.energyValue >= 100;
         this.weapons.addEnergy(ENERGY_ROOM_RATE * (over ? 0.4 : 1) * dt);
       }
-      this.chargeEl.style.opacity =
-        charging && this.weapons.energy01 < 1 ? "1" : "0";
+      this.chargeEl.style.opacity = recharging ? "1" : "0";
+      this.setCharge(recharging);
 
       // Reactor health bar + self-destruct / escape logic.
       if (this.enemies.reactorAlive && this.enemies.reactorHp01 < 1) {
@@ -1077,6 +1090,7 @@ export class PlayState implements GameState {
   }
 
   exit() {
+    this.setCharge(false);
     this.game.input.exitPointerLock();
     this.game.renderer.domElement.removeEventListener("click", this.onClick);
     this.root.remove();

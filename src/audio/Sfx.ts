@@ -6,6 +6,12 @@ export class Sfx {
   private ctx: AudioContext | null = null;
   private master!: GainNode;
   private noise!: AudioBuffer;
+  private charge: {
+    o1: OscillatorNode;
+    o2: OscillatorNode;
+    lfo: OscillatorNode;
+    g: GainNode;
+  } | null = null;
 
   /** Build/resume the audio graph. Call from a user gesture. */
   start() {
@@ -312,6 +318,60 @@ export class Sfx {
     o.connect(g);
     o.start(t);
     o.stop(t + 0.16);
+  }
+
+  /**
+   * Looping energy-recharge tone — a bright pulsing electric warble,
+   * Descent energy-center style. Idempotent: call (true) on enter, the
+   * (false) on leave; repeated identical calls are no-ops.
+   */
+  energyCharge(on: boolean) {
+    if (!this.ctx) return;
+    const ctx = this.ctx;
+    const t = ctx.currentTime;
+
+    if (on) {
+      if (this.charge) return;
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(0.16, t + 0.08);
+      g.connect(this.master);
+
+      const o1 = ctx.createOscillator();
+      o1.type = "sawtooth";
+      o1.frequency.value = 300;
+      const o2 = ctx.createOscillator();
+      o2.type = "square";
+      o2.frequency.value = 470;
+
+      // Fast warble swinging both tones for the electric shimmer.
+      const lfo = ctx.createOscillator();
+      lfo.type = "sine";
+      lfo.frequency.value = 12;
+      const lg = ctx.createGain();
+      lg.gain.value = 130;
+      lfo.connect(lg);
+      lg.connect(o1.frequency);
+      lg.connect(o2.frequency);
+
+      o1.connect(g);
+      o2.connect(g);
+      o1.start(t);
+      o2.start(t);
+      lfo.start(t);
+      this.charge = { o1, o2, lfo, g };
+    } else {
+      if (!this.charge) return;
+      const c = this.charge;
+      this.charge = null;
+      c.g.gain.cancelScheduledValues(t);
+      c.g.gain.setValueAtTime(Math.max(0.0001, c.g.gain.value), t);
+      c.g.gain.exponentialRampToValueAtTime(0.0001, t + 0.12);
+      const end = t + 0.16;
+      c.o1.stop(end);
+      c.o2.stop(end);
+      c.lfo.stop(end);
+    }
   }
 
   /** Noisy boom with a low thump; scale ~1 default, larger = bigger. */
