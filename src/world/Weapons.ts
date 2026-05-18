@@ -413,7 +413,8 @@ export class WeaponSystem {
       case "laser":
       case "superlaser": {
         const sup = this.selected === "superlaser";
-        const cost = (sup ? 6 : 4) + (this.laser - 1) * 1.5;
+        // Workhorse weapon — keep it cheap so the tank lasts.
+        const cost = (sup ? 3 : 1.5) + (this.laser - 1) * (sup ? 0.7 : 0.4);
         if (this.energy < cost) return;
         const sides =
           this.laser >= 4
