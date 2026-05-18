@@ -5,6 +5,7 @@ import { DifficultyState } from "./DifficultyState";
 import { LeaderboardState } from "./LeaderboardState";
 import { NexusState } from "./NexusState";
 import { LEVELS } from "../world/levels";
+import { ACTIONS, ACTION_LABEL, Keymap, type Action } from "../engine/Keymap";
 
 /** Retro 90s Descent-style COREFALL title screen (from Claude Design). */
 export class MenuState implements GameState {
@@ -18,7 +19,8 @@ export class MenuState implements GameState {
   private toastEl!: HTMLElement;
 
   private armed = false;
-  private view: "main" | "missions" | "options" = "main";
+  private view: "main" | "missions" | "options" | "controls" = "main";
+  private rebindAction: Action | null = null;
   private sel = 0;
   private items: HTMLElement[] = [];
   private depthTimer = 0;
@@ -165,7 +167,7 @@ export class MenuState implements GameState {
   }
 
   // --- menu views ---
-  private renderList() {
+  private renderList(keepSel = false) {
     let html = "";
     if (this.view === "main") {
       this.titleEl.textContent = "NEXUS DATA LINK NETWORK";
@@ -191,15 +193,33 @@ export class MenuState implements GameState {
             `<li data-i="${i}"><span class="cursor">▶</span><span class="label">${i + 1}. ${lv.name}</span><span class="hint">TIER ${lv.tier}</span></li>`,
         ).join("") +
         `<li data-i="${LEVELS.length}"><span class="cursor">▶</span><span class="label">Back</span><span class="hint"></span></li>`;
-    } else {
+    } else if (this.view === "options") {
       this.titleEl.textContent = "OPERATOR CONFIG";
       html = `
         <li data-i="0"><span class="cursor">▶</span><span class="label">Menu Theme</span><span class="hint">${this.game.music.menuTheme === 2 ? "V2 POP" : "V1 CALM"}</span></li>
-        <li data-i="1"><span class="cursor">▶</span><span class="label">Back</span><span class="hint"></span></li>`;
+        <li data-i="1"><span class="cursor">▶</span><span class="label">Controls</span><span class="hint">REBIND</span></li>
+        <li data-i="2"><span class="cursor">▶</span><span class="label">Back</span><span class="hint"></span></li>`;
+    } else {
+      this.titleEl.textContent = "CONTROL BINDINGS";
+      const rows = ACTIONS.map(
+        (a, i) =>
+          `<li data-i="${i}"><span class="cursor">▶</span><span class="label">${ACTION_LABEL[a]}</span><span class="hint">${
+            this.rebindAction === a
+              ? "&lt; PRESS KEY &gt;"
+              : Keymap.keyLabel(this.game.keymap.code(a))
+          }</span></li>`,
+      );
+      rows.push(
+        `<li data-i="${ACTIONS.length}"><span class="cursor">▶</span><span class="label">Reset to Defaults</span><span class="hint">RESET</span></li>`,
+      );
+      rows.push(
+        `<li data-i="${ACTIONS.length + 1}"><span class="cursor">▶</span><span class="label">Back</span><span class="hint"></span></li>`,
+      );
+      html = rows.join("");
     }
     this.listEl.innerHTML = html;
     this.items = [...this.listEl.querySelectorAll<HTMLElement>("li")];
-    this.sel = 0;
+    if (!keepSel || this.sel >= this.items.length) this.sel = 0;
     this.paint();
     this.items.forEach((el, idx) => {
       el.addEventListener("mouseenter", () => {
@@ -274,15 +294,34 @@ export class MenuState implements GameState {
         this.game.sfx.pickup();
         this.game.setState(new DifficultyState());
       }
-    } else {
+    } else if (this.view === "options") {
       if (idx === 0) {
         this.game.music.setMenuTheme(this.game.music.menuTheme === 2 ? 1 : 2);
         this.game.sfx.weaponSelect();
         this.renderList();
-        this.sel = 0;
-        this.paint();
+      } else if (idx === 1) {
+        this.view = "controls";
+        this.game.sfx.weaponSelect();
+        this.renderList();
       } else {
         this.view = "main";
+        this.game.sfx.weaponSelect();
+        this.renderList();
+      }
+    } else {
+      // controls view
+      if (idx < ACTIONS.length) {
+        this.rebindAction = ACTIONS[idx];
+        this.game.sfx.weaponSelect();
+        this.toast("PRESS A KEY · ESC CANCELS", true);
+        this.renderList(true);
+      } else if (idx === ACTIONS.length) {
+        this.game.keymap.reset();
+        this.game.sfx.pickup();
+        this.toast("CONTROLS RESET", true);
+        this.renderList(true);
+      } else {
+        this.view = "options";
         this.game.sfx.weaponSelect();
         this.renderList();
       }
@@ -294,6 +333,21 @@ export class MenuState implements GameState {
       if (e.key === "Enter" || e.key === " ") {
         this.arm();
         e.preventDefault();
+      }
+      return;
+    }
+    // Capturing a key for a control rebind.
+    if (this.rebindAction) {
+      e.preventDefault();
+      if (e.key === "Escape") {
+        this.rebindAction = null;
+        this.game.sfx.hit();
+        this.renderList(true);
+      } else {
+        this.game.keymap.set(this.rebindAction, e.code);
+        this.rebindAction = null;
+        this.game.sfx.pickup();
+        this.renderList(true);
       }
       return;
     }
@@ -311,7 +365,11 @@ export class MenuState implements GameState {
       this.choose(this.sel);
       e.preventDefault();
     } else if (e.key === "Escape") {
-      if (this.view !== "main") {
+      if (this.view === "controls") {
+        this.view = "options";
+        this.renderList();
+        this.game.sfx.weaponSelect();
+      } else if (this.view !== "main") {
         this.view = "main";
         this.renderList();
         this.game.sfx.weaponSelect();

@@ -2,6 +2,8 @@
  * Keyboard + pointer-lock mouse input.
  * Mouse deltas accumulate between frames and are drained by consumeMouse().
  */
+import type { Keymap, Action } from "./Keymap";
+
 export class Input {
   private keys = new Set<string>();
   private mouseButtons = new Set<number>();
@@ -9,7 +11,10 @@ export class Input {
   private mouseDY = 0;
   private locked = false;
 
-  constructor(private readonly element: HTMLElement) {
+  constructor(
+    private readonly element: HTMLElement,
+    public keymap?: Keymap,
+  ) {
     window.addEventListener("keydown", this.onKeyDown);
     window.addEventListener("keyup", this.onKeyUp);
     document.addEventListener("mousemove", this.onMouseMove);
@@ -65,6 +70,12 @@ export class Input {
 
   isDown(code: string): boolean {
     return this.keys.has(code);
+  }
+
+  /** True while the key bound to `action` is held. */
+  isAction(action: Action): boolean {
+    const code = this.keymap?.code(action);
+    return !!code && this.keys.has(code);
   }
 
   /** True while the given mouse button is held (0 = left). */

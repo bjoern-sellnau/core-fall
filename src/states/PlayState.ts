@@ -490,7 +490,7 @@ export class PlayState implements GameState {
   private onClick: () => void = () => {};
 
   update(dt: number) {
-    const nDown = this.game.input.isDown("KeyN");
+    const nDown = this.game.input.isAction("muteMusic");
     if (nDown && !this.musicKeyDown) this.game.music.toggleMute();
     this.musicKeyDown = nDown;
 
@@ -513,7 +513,7 @@ export class PlayState implements GameState {
     const locked = this.game.input.isLocked;
 
     // Automap toggle (pauses the sim while open).
-    const mDown = this.game.input.isDown("KeyM");
+    const mDown = this.game.input.isAction("map");
     if (mDown && !this.mapKeyDown) this.mapView.toggle();
     this.mapKeyDown = mDown;
 
@@ -545,7 +545,7 @@ export class PlayState implements GameState {
       }
     }
 
-    const vDown = this.game.input.isDown("KeyV");
+    const vDown = this.game.input.isAction("view");
     if (locked && vDown && !this.viewKeyDown) {
       this.viewMode = this.viewMode === "fp" ? "chase" : "fp";
     }

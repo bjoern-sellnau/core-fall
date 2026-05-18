@@ -22,10 +22,12 @@ export class Ship {
   readonly model = new THREE.Group();
 
   private velocity = new THREE.Vector3();
-  private readonly baseY: number;
+  private readonly world: RAPIER.World;
   private body: RAPIER.RigidBody;
   private collider: RAPIER.Collider;
   private controller: RAPIER.KinematicCharacterController;
+  private readonly worldDown = new THREE.Vector3(0, -1, 0);
+  private readonly tmpEye = new THREE.Vector3();
 
   private readonly fwd = new THREE.Vector3();
   private readonly right = new THREE.Vector3();
@@ -41,9 +43,9 @@ export class Ship {
     spawnPos: THREE.Vector3,
     spawnQuat: THREE.Quaternion,
   ) {
+    this.world = world;
     this.position.copy(spawnPos);
     this.quaternion.copy(spawnQuat);
-    this.baseY = spawnPos.y;
 
     this.body = world.createRigidBody(
       RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(
@@ -137,19 +139,17 @@ export class Ship {
     if (dy !== 0) this.rotateLocal(1, 0, 0, -dy * MOUSE_SENSITIVITY);
 
     let roll = 0;
-    if (input.isDown("KeyQ")) roll += 1; // roll left
-    if (input.isDown("KeyE")) roll -= 1; // roll right
+    if (input.isAction("rollLeft")) roll += 1;
+    if (input.isAction("rollRight")) roll -= 1;
     if (roll !== 0) this.rotateLocal(0, 0, 1, roll * ROLL_SPEED * dt);
 
-    // Level: ease the roll back to zero, keeping the look direction.
-    if (input.isDown("KeyR")) {
+    // Level Roll: cancel any bank, keeping the exact look direction.
+    // Re-deriving the orientation from (forward, worldUp) leaves pitch
+    // and yaw untouched and only zeroes the roll about the nose.
+    if (input.isAction("levelRoll")) {
       this.fwd.set(0, 0, -1).applyQuaternion(this.quaternion);
       if (Math.abs(this.fwd.y) < 0.985) {
-        this.levelMat.lookAt(
-          new THREE.Vector3(),
-          this.fwd.clone().negate(),
-          this.worldUp,
-        );
+        this.levelMat.lookAt(this.tmpEye, this.fwd, this.worldUp);
         this.levelQuat.setFromRotationMatrix(this.levelMat);
         this.quaternion.slerp(
           this.levelQuat,
@@ -166,12 +166,14 @@ export class Ship {
     this.up.set(0, 1, 0).applyQuaternion(this.quaternion);
 
     this.accel.set(0, 0, 0);
-    if (input.isDown("KeyW")) this.accel.addScaledVector(this.fwd, 1);
-    if (input.isDown("KeyS")) this.accel.addScaledVector(this.fwd, -1);
-    if (input.isDown("KeyD")) this.accel.addScaledVector(this.right, 1);
-    if (input.isDown("KeyA")) this.accel.addScaledVector(this.right, -1);
-    if (input.isDown("Space")) this.accel.addScaledVector(this.up, 1);
-    if (input.isDown("KeyC")) this.accel.addScaledVector(this.up, -1);
+    if (input.isAction("thrustFwd")) this.accel.addScaledVector(this.fwd, 1);
+    if (input.isAction("thrustBack")) this.accel.addScaledVector(this.fwd, -1);
+    if (input.isAction("strafeRight"))
+      this.accel.addScaledVector(this.right, 1);
+    if (input.isAction("strafeLeft"))
+      this.accel.addScaledVector(this.right, -1);
+    if (input.isAction("up")) this.accel.addScaledVector(this.up, 1);
+    if (input.isAction("down")) this.accel.addScaledVector(this.up, -1);
 
     if (this.accel.lengthSq() > 0) {
       this.accel.normalize().multiplyScalar(ACCEL * dt);
@@ -180,17 +182,38 @@ export class Ship {
 
     // Glide damping + speed clamp.
     this.velocity.multiplyScalar(Math.exp(-DAMPING_RATE * dt));
-    const boosting = input.isDown("ShiftLeft") || input.isDown("ShiftRight");
-    const max = boosting ? BOOST_SPEED : MAX_SPEED;
+    const max = input.isAction("boost") ? BOOST_SPEED : MAX_SPEED;
     if (this.velocity.length() > max) this.velocity.setLength(max);
 
-    // H: ease back to the standard flight altitude.
-    if (input.isDown("KeyH")) {
-      const dy = this.baseY - this.position.y;
-      this.velocity.y = Math.max(
-        -HEIGHT_RESET,
-        Math.min(HEIGHT_RESET, dy * 2),
+    // Recenter: drift to the vertical middle of the current chamber by
+    // probing the floor and ceiling directly above/below the ship.
+    if (input.isAction("recenter")) {
+      const MAXP = 400;
+      const down = this.world.castRay(
+        new RAPIER.Ray(this.position, this.worldDown),
+        MAXP,
+        true,
+        undefined,
+        undefined,
+        undefined,
+        this.body,
       );
+      const up = this.world.castRay(
+        new RAPIER.Ray(this.position, this.worldUp),
+        MAXP,
+        true,
+        undefined,
+        undefined,
+        undefined,
+        this.body,
+      );
+      if (down && up) {
+        const dy = (up.timeOfImpact - down.timeOfImpact) / 2;
+        this.velocity.y = Math.max(
+          -HEIGHT_RESET,
+          Math.min(HEIGHT_RESET, dy * 2),
+        );
+      }
     }
 
     // --- Collide & slide ---

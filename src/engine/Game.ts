@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { Input } from "./Input";
+import { Keymap } from "./Keymap";
 import { MusicEngine } from "../audio/Music";
 import { Sfx } from "../audio/Sfx";
 import type { GameState } from "../states/GameState";
@@ -12,6 +13,7 @@ export class Game {
   readonly renderer: THREE.WebGLRenderer;
   readonly container: HTMLElement;
   readonly input: Input;
+  readonly keymap = new Keymap();
   readonly music = new MusicEngine();
   readonly sfx = new Sfx();
 
@@ -49,7 +51,7 @@ export class Game {
     this.renderer.domElement.tabIndex = 0;
     container.appendChild(this.renderer.domElement);
 
-    this.input = new Input(this.renderer.domElement);
+    this.input = new Input(this.renderer.domElement, this.keymap);
 
     window.addEventListener("resize", this.onResize);
   }
