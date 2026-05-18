@@ -853,49 +853,60 @@ export class PlayState implements GameState {
     this.pause.classList.add("hidden");
     this.winTimer += dt;
 
-    const T_HYPER = 3.0; // leave the mine, engage hyperdrive
-    const T_JUMP = 4.2; // light-speed flash
-    const T_BLACK = 4.7; // pure black screen
-    const T_TEXT = 5.4; // completion text
+    const T_HYPER = 3.4; // leave the mine, engage hyperdrive
+    const T_JUMP = 4.6; // light-speed flash
+    const T_BLACK = 5.1; // pure black screen
+    const T_TEXT = 5.8; // completion text
     const t = this.winTimer;
 
     // --- Phase 1: still inside the mine — fly out, mine blows behind ---
     if (t < T_HYPER) {
       this.ship.model.visible = true;
       this.ship.model.rotation.set(0, 0, 0); // nose along -Z (outward)
-      const sz = this.winStart.z - (24 * t + 5 * t * t);
+      // Accelerating burn out through the mine mouth.
+      const sz = this.winStart.z - (26 * t + 7 * t * t);
       this.ship.position.set(this.winStart.x, this.winStart.y, sz);
       this.ship.model.position.copy(this.ship.position);
-      this.escapeLight.intensity = 180;
+
+      // Bright daylight spilling in from the open mouth ahead.
+      const near = t / T_HYPER;
+      this.escapeLight.color.setHex(0xdff0ff);
+      this.escapeLight.intensity = 160 + near * 520;
+      this.escapeLight.distance = 220;
       this.escapeLight.position.set(
         this.winStart.x,
-        this.winStart.y + 3,
-        sz - 2,
+        this.winStart.y + 2,
+        sz - 26,
       );
-      // Camera ahead of the ship looking back at it and the mine.
+
+      // Camera chases from behind, with a collapse rumble that eases off.
+      const shake = (1 - near) * 0.9;
       this.camera.position.set(
-        this.winStart.x + 5,
-        this.winStart.y + 3.5,
-        sz - (16 + 6 * t),
+        this.winStart.x + 4 + (Math.random() - 0.5) * shake,
+        this.winStart.y + 3 + (Math.random() - 0.5) * shake,
+        sz + 17 + (Math.random() - 0.5) * shake,
       );
-      this.camera.lookAt(this.winStart.x, this.winStart.y, sz + 10);
+      this.camera.lookAt(this.winStart.x, this.winStart.y, sz - 30);
       this.level.update(dt, this.ship.position);
 
       this.deathFx.update(dt);
       this.winBoomTimer -= dt;
       if (this.winBoomTimer <= 0) {
-        this.winBoomTimer = 0.22;
+        this.winBoomTimer = 0.1 + Math.random() * 0.08;
+        const big = Math.random() < 0.4;
         this.deathFx.trigger(
           new THREE.Vector3(
-            this.winStart.x + (Math.random() - 0.5) * 24,
-            this.winStart.y + (Math.random() - 0.5) * 18,
-            sz + 16 + Math.random() * 55,
+            this.winStart.x + (Math.random() - 0.5) * 30,
+            this.winStart.y + (Math.random() - 0.5) * 22,
+            sz + 14 + Math.random() * 70,
           ),
           { laser: 0, rockets: 0 },
         );
-        this.game.sfx.explosion(2.6);
+        this.game.sfx.explosion(big ? 3.2 : 2.2);
       }
-      this.winFade.style.opacity = "0";
+      // Light bloom into the jump flash as the mouth swallows the screen.
+      this.winFade.style.background = "#dfeaff";
+      this.winFade.style.opacity = `${Math.max(0, (near - 0.78) / 0.22) * 0.55}`;
       return;
     }
 
@@ -934,7 +945,10 @@ export class PlayState implements GameState {
 
     // White blink → pure black, then the text.
     if (t < T_JUMP) {
-      this.winFade.style.opacity = "0";
+      // Carry the mouth bloom across the cut, then fade to reveal space.
+      const f = Math.max(0, 0.55 - (t - T_HYPER) * 1.6);
+      this.winFade.style.background = "#dfeaff";
+      this.winFade.style.opacity = `${f}`;
     } else if (t < T_BLACK) {
       this.winFade.style.background = "#e8f0ff";
       this.winFade.style.opacity = `${(t - T_JUMP) / (T_BLACK - T_JUMP)}`;

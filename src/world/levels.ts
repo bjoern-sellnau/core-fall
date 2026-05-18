@@ -86,6 +86,9 @@ const L1: LevelDef = {
     [24, 0, -58, 28, 9, 9, 7],
     [46, 0, -58, 22, 16, 22, 12],
     [0, 12, -188, 14, 20, 14, 8],
+    // Open escape shaft punched through the exit chamber's far wall so
+    // the end-run flies out a real mouth instead of clipping geometry.
+    [0, -6, -630, 16, 12, 220, 7],
   ],
   doors: [
     { pos: [0, 0, -26], size: [11, 10, 1.6], color: "normal" },
@@ -200,6 +203,9 @@ function gen(o: GenOpts): LevelDef {
   const rCross = Math.max(o.roomCross + 10, 30);
   const reactorIdx = place("F", 40, rCross, 0, true);
   const exitIdx = place("F", 30, 18, 10);
+  // Open escape shaft beyond the exit so the win cinematic flies out
+  // through a real mine mouth instead of straight through a wall.
+  place("F", 220, 16, 7);
 
   const rb = boxes[reactorIdx];
   const eb = boxes[exitIdx];
