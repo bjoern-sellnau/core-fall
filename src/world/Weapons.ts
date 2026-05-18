@@ -5,7 +5,8 @@ import type { Sfx } from "../audio/Sfx";
 export const ROCKET_SPEED = 85;
 const ROCKET_LIFETIME = 4;
 const ROCKET_INTERVAL = 0.6;
-const MAX_ENERGY = 100;
+const BASE_ENERGY = 100;
+const UP_ENERGY = 200; // with the energy-capacity upgrade
 const MUZZLE = 2.2;
 const MAX_LASER_LEVEL = 4;
 
@@ -119,7 +120,8 @@ export class WeaponSystem {
 
   private cooldown = 0;
   private rocketCool = 0;
-  private energy = MAX_ENERGY;
+  private energyMax = BASE_ENERGY;
+  private energy = BASE_ENERGY;
   private charge = 0; // fusion charge
   private prevFiring = false;
 
@@ -175,7 +177,16 @@ export class WeaponSystem {
   }
 
   get energy01() {
-    return this.energy / MAX_ENERGY;
+    return this.energy / this.energyMax;
+  }
+  get energyValue() {
+    return this.energy;
+  }
+  get energyCap() {
+    return this.energyMax;
+  }
+  get hasEnergyCap() {
+    return this.energyMax >= UP_ENERGY;
   }
   get laserLevel() {
     return this.laser;
@@ -219,7 +230,12 @@ export class WeaponSystem {
     this.vulcan += n;
   }
   addEnergy(n: number) {
-    this.energy = Math.min(MAX_ENERGY, this.energy + n);
+    this.energy = Math.min(this.energyMax, this.energy + n);
+  }
+  /** Energy-capacity upgrade: lifts the tank to 200 and tops it off. */
+  addEnergyCapacity() {
+    this.energyMax = UP_ENERGY;
+    this.energy = this.energyMax;
   }
   addChrono() {
     this.chrono = Math.min(3, this.chrono + 1);
@@ -245,7 +261,7 @@ export class WeaponSystem {
     } else if (SECONDARY.includes(w)) {
       this.rockets += 6;
     } else {
-      this.energy = MAX_ENERGY;
+      this.energy = this.energyMax;
     }
     this.charge = 0;
     this.sfx.weaponSelect();
@@ -260,6 +276,8 @@ export class WeaponSystem {
       rockets: this.rockets,
       quad: this.quad,
       chrono: this.chrono,
+      energy: this.energy,
+      energyMax: this.energyMax,
     };
   }
   importLoadout(l: {
@@ -269,6 +287,8 @@ export class WeaponSystem {
     rockets: number;
     quad?: boolean;
     chrono?: number;
+    energy?: number;
+    energyMax?: number;
   }) {
     const ws = (l.weapons.length ? l.weapons : ["laser"]) as Weapon[];
     this.owned = new Set(ws);
@@ -277,6 +297,11 @@ export class WeaponSystem {
     this.rockets = l.rockets;
     this.quad = !!l.quad;
     this.chrono = l.chrono ?? 0;
+    this.energyMax = l.energyMax ?? BASE_ENERGY;
+    this.energy = Math.min(
+      this.energyMax,
+      l.energy ?? this.energyMax,
+    );
     this.selected = "laser";
   }
 
@@ -292,7 +317,9 @@ export class WeaponSystem {
     this.quad = false;
     this.rockets = 0;
     this.vulcan = 0;
-    this.energy = MAX_ENERGY;
+    // The energy-capacity upgrade is a permanent install — keep the
+    // bigger tank and respawn with it full.
+    this.energy = this.energyMax;
     this.selected = "laser";
     this.charge = 0;
     // The Chronosphere is a gadget, not gear — it survives a respawn.

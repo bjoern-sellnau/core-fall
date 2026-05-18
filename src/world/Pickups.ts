@@ -8,6 +8,8 @@ export type PickupKind =
   | "laser"
   | "energy"
   | "vammo"
+  | "ecap"
+  | "scap"
   | "quad"
   | "chrono"
   | "keyblue"
@@ -44,6 +46,8 @@ const COLOR: Record<PickupKind, number> = {
   laser: 0xff5ce0,
   energy: 0x66ddff,
   vammo: 0xf4c542,
+  ecap: 0x33ffff,
+  scap: 0x7affc0,
   quad: 0xff5ce0,
   chrono: 0xb060ff,
   keyblue: 0x3a7bff,
@@ -103,7 +107,7 @@ export class PickupField {
   /** Add one specific pickup (used for keys). */
   add(p: THREE.Vector3, kind: PickupKind) {
     const mesh = new THREE.Mesh(
-      kind === "chrono"
+      kind === "chrono" || kind === "ecap" || kind === "scap"
         ? this.chronoGeo
         : isWeapon(kind)
           ? this.wpnGeo

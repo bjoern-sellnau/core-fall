@@ -27,6 +27,8 @@ const PICKUP_INFO: Record<PickupKind, { css: string; label: string }> = {
   laser: { css: "#ff5ce0", label: "LASER UP" },
   energy: { css: "#66ddff", label: "ENERGY +65" },
   vammo: { css: "#f4c542", label: "VULCAN +200" },
+  ecap: { css: "#33ffff", label: "ENERGY CAP 200" },
+  scap: { css: "#7affc0", label: "SHIELD CAP 200" },
   quad: { css: "#ff5ce0", label: "QUAD LASER" },
   chrono: { css: "#b060ff", label: "CHRONOSPHERE" },
   keyblue: { css: "#3a7bff", label: "BLUE KEY" },
@@ -83,6 +85,7 @@ const SUPPLY_CYCLE: PickupKind[] = [
 
 const MAX_HULL = 100;
 const MAX_SHIELD = 100;
+const UP_SHIELD = 200; // with the shield-capacity plug-in (mission 5+)
 const SHIELD_REGEN = 14; // per s
 const SHIELD_DELAY = 4; // s after a hit before shield regenerates
 const HEALTH_PICKUP = 35;
@@ -113,6 +116,7 @@ export class PlayState implements GameState {
 
   private hull = MAX_HULL;
   private shield = MAX_SHIELD;
+  private shieldMax = MAX_SHIELD;
   private shieldDelay = 0;
   private invuln = 0;
 
@@ -225,9 +229,15 @@ export class PlayState implements GameState {
     this.scene.add(this.enemies.group);
     this.weapons.setTargetSource(() => this.enemies.enemyPoints());
 
-    // Carry the weapon loadout across story levels (before deciding which
-    // extra pickups still need to be offered this mission).
-    if (this.game.loadout) this.weapons.importLoadout(this.game.loadout);
+    // Carry the loadout across story levels (before deciding which extra
+    // pickups still need to be offered this mission). Hull / shield /
+    // energy travel with you, exactly as you left the previous shaft.
+    if (this.game.loadout) {
+      this.weapons.importLoadout(this.game.loadout);
+      this.shieldMax = this.game.loadout.shieldMax;
+      this.shield = Math.min(this.game.loadout.shield, this.shieldMax);
+      this.hull = Math.min(this.game.loadout.hull, MAX_HULL);
+    }
 
     this.pickups = new PickupField(this.game.sfx);
     this.pickups.spawn(this.level.pickupSpawns);
@@ -271,6 +281,16 @@ export class PlayState implements GameState {
     }
     if (this.game.levelIndex >= 1 && !this.weapons.hasQuad) {
       this.pickups.add(slot(si), "quad");
+      si += 3;
+    }
+    // Energy-capacity install (mission 2+, once, then permanent).
+    if (this.game.levelIndex >= 1 && !this.weapons.hasEnergyCap) {
+      this.pickups.add(slot(si), "ecap");
+      si += 3;
+    }
+    // Shield-capacity plug-in from mission 5 onward, once.
+    if (this.game.levelIndex >= 4 && this.shieldMax < UP_SHIELD) {
+      this.pickups.add(slot(si), "scap");
       si += 3;
     }
     // Chronosphere appears from mission 3 onward; carried after that.
@@ -502,8 +522,9 @@ export class PlayState implements GameState {
     this.ship.respawn(this.level.spawnPosition, this.level.spawnQuaternion);
     this.ship.syncCamera(this.camera);
     this.game.sfx.spawn();
+    // Capacity plug-ins are permanent: respawn at the upgraded max.
     this.hull = MAX_HULL;
-    this.shield = MAX_SHIELD;
+    this.shield = this.shieldMax;
     this.phase = "play";
     this.deathEl.classList.add("hidden");
     this.root.classList.remove("hidden");
@@ -649,7 +670,10 @@ export class PlayState implements GameState {
         }
       }
       if (charging && this.weapons.energy01 < 1) {
-        this.weapons.addEnergy(ENERGY_ROOM_RATE * dt);
+        // Fast up to the base 100, then a slow trickle into the
+        // upgraded 100–200 overcharge band.
+        const over = this.weapons.energyValue >= 100;
+        this.weapons.addEnergy(ENERGY_ROOM_RATE * (over ? 0.4 : 1) * dt);
       }
       this.chargeEl.style.opacity =
         charging && this.weapons.energy01 < 1 ? "1" : "0";
@@ -700,7 +724,7 @@ export class PlayState implements GameState {
         if (k === "health") {
           this.hull = Math.min(MAX_HULL, this.hull + HEALTH_PICKUP);
         } else if (k === "shield") {
-          this.shield = MAX_SHIELD;
+          this.shield = this.shieldMax;
         } else if (k === "rockets") {
           this.weapons.addRockets(ROCKET_PICKUP);
         } else if (k === "laser") {
@@ -709,6 +733,11 @@ export class PlayState implements GameState {
           this.weapons.addEnergy(65);
         } else if (k === "vammo") {
           this.weapons.addVulcan(VAMMO_PICKUP);
+        } else if (k === "ecap") {
+          this.weapons.addEnergyCapacity();
+        } else if (k === "scap") {
+          this.shieldMax = UP_SHIELD;
+          this.shield = this.shieldMax;
         } else if (k === "quad") {
           this.weapons.addQuad();
         } else if (k === "chrono") {
@@ -766,8 +795,11 @@ export class PlayState implements GameState {
           this.die();
         }
       }
-      if (this.shieldDelay <= 0 && this.shield < MAX_SHIELD) {
-        this.shield = Math.min(MAX_SHIELD, this.shield + SHIELD_REGEN * dt);
+      if (this.shieldDelay <= 0 && this.shield < this.shieldMax) {
+        this.shield = Math.min(
+          this.shieldMax,
+          this.shield + SHIELD_REGEN * dt,
+        );
       }
 
       this.speedEl.textContent = this.ship.speed.toFixed(0);
@@ -786,7 +818,7 @@ export class PlayState implements GameState {
         " " +
         key(this.keys.yellow, "#ffd23a", "Y");
       this.hullEl.style.width = `${Math.max(0, (this.hull / MAX_HULL) * 100).toFixed(0)}%`;
-      this.shieldEl.style.width = `${((this.shield / MAX_SHIELD) * 100).toFixed(0)}%`;
+      this.shieldEl.style.width = `${Math.max(0, (this.shield / this.shieldMax) * 100).toFixed(0)}%`;
       const wp = this.weapons.current;
       const isLaser = wp === "laser" || wp === "superlaser";
       this.rktEl.textContent =
@@ -976,7 +1008,12 @@ export class PlayState implements GameState {
       if (!sp) this.spaceArmed = true;
       if (this.spaceArmed && sp) {
         if (more) {
-          this.game.loadout = this.weapons.exportLoadout();
+          this.game.loadout = {
+            ...this.weapons.exportLoadout(),
+            hull: this.hull,
+            shield: this.shield,
+            shieldMax: this.shieldMax,
+          };
           this.game.levelIndex += 1;
           this.game.setState(new BriefingState());
         } else if (storyDone) {

@@ -33,6 +33,11 @@ export class Game {
     rockets: number;
     quad: boolean;
     chrono: number;
+    energy: number;
+    energyMax: number;
+    hull: number;
+    shield: number;
+    shieldMax: number;
   } | null = null;
   clearRestart() {
     this.loadout = null;
