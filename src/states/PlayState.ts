@@ -7,7 +7,7 @@ import { LeaderboardState } from "./LeaderboardState";
 import { PhysicsWorld, RAPIER } from "../physics/Physics";
 import { Level } from "../world/Level";
 import { Ship } from "../world/Ship";
-import { WeaponSystem, WEAPON_NAME } from "../world/Weapons";
+import { WeaponSystem, WEAPON_NAME, type Weapon } from "../world/Weapons";
 import { EnemySwarm, difficultyConfig } from "../world/Enemies";
 import { LEVELS } from "../world/levels";
 import { PickupField, type PickupKind } from "../world/Pickups";
@@ -23,6 +23,19 @@ const PICKUP_INFO: Record<PickupKind, { css: string; label: string }> = {
   keyblue: { css: "#3a7bff", label: "BLUE KEY" },
   keyred: { css: "#ff3a3a", label: "RED KEY" },
   keyyellow: { css: "#ffd23a", label: "YELLOW KEY" },
+  wsuperlaser: { css: "#ffe27a", label: "SUPER LASER" },
+  wvulcan: { css: "#ffe27a", label: "VULCAN" },
+  wplasma: { css: "#ffe27a", label: "PLASMA" },
+  wfusion: { css: "#ffe27a", label: "FUSION" },
+  wrockets: { css: "#ffe27a", label: "ROCKETS" },
+};
+
+const WPN_OF: Partial<Record<PickupKind, Weapon>> = {
+  wsuperlaser: "superlaser",
+  wvulcan: "vulcan",
+  wplasma: "plasma",
+  wfusion: "fusion",
+  wrockets: "rockets",
 };
 
 const MAX_HULL = 100;
@@ -167,18 +180,18 @@ export class PlayState implements GameState {
     for (const k of this.level.keySpawns) {
       this.pickups.add(k.pos, k.kind as PickupKind);
     }
-    // Restored from a death-restart: carry lives/keys + dropped gear.
-    if (this.game.restartLives >= 0) {
-      this.lives = this.game.restartLives;
-      if (this.game.restartKeys) this.keys = { ...this.game.restartKeys };
-      for (const d of this.game.restartDrops) {
-        this.pickups.add(
-          new THREE.Vector3(d.x, d.y, d.z),
-          d.kind as PickupKind,
-        );
-      }
-    }
+    // This level's new weapon, in an early room.
+    const wkind = ("w" + LEVELS[this.game.levelIndex].weapon) as PickupKind;
+    const wpos = this.level.pickupSpawns.length
+      ? this.level.pickupSpawns[
+          Math.min(2, this.level.pickupSpawns.length - 1)
+        ]
+      : this.level.spawnPosition.clone();
+    this.pickups.add(wpos.clone(), wkind);
     this.scene.add(this.pickups.group);
+
+    // Carry the weapon loadout across story levels.
+    if (this.game.loadout) this.weapons.importLoadout(this.game.loadout);
 
     this.deathFx = new DeathFx();
     this.scene.add(this.deathFx.group);
@@ -344,32 +357,6 @@ export class PlayState implements GameState {
       rockets: this.weapons.rocketAmmo,
     });
 
-    // Stash what to restore if the level is restarted: lives, keys,
-    // and the gear scattered where we died (so it can be recovered).
-    if (this.lives > 0) {
-      const j = () => (Math.random() - 0.5) * 6;
-      const drops: { x: number; y: number; z: number; kind: string }[] = [];
-      for (let i = 1; i < this.weapons.laserLevel; i++) {
-        drops.push({
-          x: this.deathPos.x + j(),
-          y: this.deathPos.y + j(),
-          z: this.deathPos.z + j(),
-          kind: "laser",
-        });
-      }
-      if (this.weapons.rocketAmmo > 0) {
-        drops.push({
-          x: this.deathPos.x + j(),
-          y: this.deathPos.y + j(),
-          z: this.deathPos.z + j(),
-          kind: "rockets",
-        });
-      }
-      this.game.restartDrops = drops;
-      this.game.restartLives = this.lives;
-      this.game.restartKeys = { ...this.keys };
-    }
-
     this.phase = this.lives > 0 ? "dead" : "gameover";
     this.deathTimer = 0;
     this.spaceArmed = false;
@@ -382,6 +369,33 @@ export class PlayState implements GameState {
     }
     this.deathEl.classList.remove("hidden");
     this.root.classList.add("hidden");
+  }
+
+  /** In-place respawn: enemies stay dead, lost gear lies where we fell. */
+  private respawn() {
+    this.deathFx.reset();
+    this.game.music.setScene("game");
+
+    const j = () => (Math.random() - 0.5) * 6;
+    const drop = (kind: PickupKind) =>
+      this.pickups.add(
+        this.deathPos.clone().add(new THREE.Vector3(j(), j(), j())),
+        kind,
+      );
+    for (const w of this.weapons.extraWeapons()) {
+      drop(("w" + w) as PickupKind);
+    }
+    for (let i = 1; i < this.weapons.laserLevel; i++) drop("laser");
+    this.weapons.resetToBase();
+
+    this.ship.respawn(this.level.spawnPosition, this.level.spawnQuaternion);
+    this.ship.syncCamera(this.camera);
+    this.game.sfx.spawn();
+    this.hull = MAX_HULL;
+    this.shield = MAX_SHIELD;
+    this.phase = "play";
+    this.deathEl.classList.add("hidden");
+    this.root.classList.remove("hidden");
   }
 
   private onClick: () => void = () => {};
@@ -543,6 +557,8 @@ export class PlayState implements GameState {
           this.keys.red = true;
         } else if (k === "keyyellow") {
           this.keys.yellow = true;
+        } else if (WPN_OF[k]) {
+          this.weapons.addWeapon(WPN_OF[k]!);
         }
         const info = PICKUP_INFO[k];
         this.flashT = 0.55;
@@ -754,12 +770,15 @@ export class PlayState implements GameState {
       if (!sp) this.spaceArmed = true;
       if (this.spaceArmed && sp) {
         if (more) {
+          this.game.loadout = this.weapons.exportLoadout();
           this.game.levelIndex += 1;
           this.game.setState(new BriefingState());
         } else if (storyDone) {
+          this.game.loadout = null;
           this.game.music.setScene("menu");
           this.game.setState(new LeaderboardState(true));
         } else {
+          this.game.loadout = null;
           this.game.music.setScene("menu");
           this.game.setState(new MenuState());
         }
@@ -806,12 +825,10 @@ export class PlayState implements GameState {
     if (!space) this.spaceArmed = true;
     if (this.spaceArmed && space && this.deathTimer >= DEATH_MIN) {
       if (this.phase === "gameover") {
-        this.game.clearRestart();
+        this.game.loadout = null;
         this.game.setState(new MenuState());
       } else {
-        // Restart the level; lost gear & lives are carried over.
-        this.game.music.setScene("game");
-        this.game.setState(new PlayState());
+        this.respawn();
       }
     }
   }

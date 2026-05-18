@@ -23,14 +23,15 @@ export class Game {
   pilotName = "";
   pilotIdx = 0;
 
-  /** Carried across a death so the level can restart with lost gear. */
-  restartLives = -1;
-  restartDrops: { x: number; y: number; z: number; kind: string }[] = [];
-  restartKeys: { blue: boolean; red: boolean; yellow: boolean } | null = null;
+  /** Weapon loadout carried across story levels (null = fresh start). */
+  loadout: {
+    weapons: string[];
+    laser: number;
+    vulcan: number;
+    rockets: number;
+  } | null = null;
   clearRestart() {
-    this.restartLives = -1;
-    this.restartDrops = [];
-    this.restartKeys = null;
+    this.loadout = null;
   }
 
   private current: GameState | null = null;

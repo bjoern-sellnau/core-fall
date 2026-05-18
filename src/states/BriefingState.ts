@@ -5,15 +5,24 @@ import { PlayState } from "./PlayState";
 import { MenuState } from "./MenuState";
 import { LEVELS } from "../world/levels";
 import { ROBOTS } from "../world/robotInfo";
-import type { Kind } from "../world/Enemies";
+import { WEAPONS } from "../world/weaponInfo";
 import { makeShell, type Shell } from "../ui/titleShell";
 
-/** Per-level briefing with an animated 3D codex of the hostile rigs. */
+interface Entry {
+  label: string;
+  role: string;
+  threat: number; // 0 = weapon (no threat bar)
+  body: number;
+  emissive: number;
+  make: () => THREE.BufferGeometry;
+}
+
+/** Per-level briefing with an animated 3D codex of rigs + new weapon. */
 export class BriefingState implements GameState {
   private game!: Game;
   private shell!: Shell;
 
-  private kinds: Kind[] = [];
+  private entries: Entry[] = [];
   private cur = 0;
   private cycle = 0;
 
@@ -33,9 +42,29 @@ export class BriefingState implements GameState {
     this.game.sfx.start();
     this.game.music.setScene("menu");
     const def = LEVELS[game.levelIndex];
-    this.kinds = [...new Set(def.kinds)];
-    this.shell = makeShell(game.container);
 
+    for (const k of [...new Set(def.kinds)]) {
+      const r = ROBOTS[k];
+      this.entries.push({
+        label: r.label,
+        role: r.role,
+        threat: r.threat,
+        body: r.body,
+        emissive: r.emissive,
+        make: r.make,
+      });
+    }
+    const w = WEAPONS[def.weapon];
+    this.entries.push({
+      label: w.label,
+      role: w.desc,
+      threat: 0,
+      body: w.body,
+      emissive: w.emissive,
+      make: w.make,
+    });
+
+    this.shell = makeShell(game.container);
     this.shell.panel.innerHTML = `
       <div class="step">MISSION ${game.levelIndex + 1} / ${LEVELS.length}</div>
       <h2>${def.name}</h2>
@@ -45,7 +74,7 @@ export class BriefingState implements GameState {
         <div><div class="k">Threat</div><div class="v">TIER ${def.tier}</div></div>
       </div>
       <div class="brief-txt">${def.brief}</div>
-      <div class="field">Hostile Rig Database</div>
+      <div class="field">Rig Database &amp; New Armory</div>
       <div class="codex">
         <div class="codex-view" id="t-view"></div>
         <div class="codex-info">
@@ -53,10 +82,10 @@ export class BriefingState implements GameState {
           <div class="codex-role" id="t-rrole"></div>
           <div class="codex-threat" id="t-rthreat"></div>
           <div class="codex-tabs" id="t-rtabs">
-            ${this.kinds
+            ${this.entries
               .map(
-                (k, i) =>
-                  `<div class="codex-tab${i === 0 ? " sel" : ""}" data-i="${i}">${ROBOTS[k].label}</div>`,
+                (e, i) =>
+                  `<div class="codex-tab${i === 0 ? " sel" : ""}" data-i="${i}">${e.label}</div>`,
               )
               .join("")}
           </div>
@@ -78,7 +107,6 @@ export class BriefingState implements GameState {
       t.addEventListener("click", () => this.show(i)),
     );
 
-    // --- 3D codex viewport ---
     const host = this.shell.panel.querySelector<HTMLElement>("#t-view")!;
     this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     this.renderer.setPixelRatio(1);
@@ -105,9 +133,9 @@ export class BriefingState implements GameState {
   }
 
   private show(i: number) {
-    this.cur = (i + this.kinds.length) % this.kinds.length;
+    this.cur = (i + this.entries.length) % this.entries.length;
     this.cycle = 0;
-    const spec = ROBOTS[this.kinds[this.cur]];
+    const spec = this.entries[this.cur];
     if (this.mesh) {
       this.scene.remove(this.mesh);
       this.mesh.geometry.dispose();
@@ -126,14 +154,16 @@ export class BriefingState implements GameState {
     this.scene.add(this.mesh);
     this.nameEl.textContent = spec.label;
     this.roleEl.textContent = spec.role;
-    this.threatEl.innerHTML = `THREAT <b>${"■".repeat(spec.threat)}${"·".repeat(5 - spec.threat)}</b>`;
+    this.threatEl.innerHTML =
+      spec.threat > 0
+        ? `THREAT <b>${"■".repeat(spec.threat)}${"·".repeat(5 - spec.threat)}</b>`
+        : `<b style="color:#ffe27a">◆ NEW WEAPON SYSTEM</b>`;
     this.tabs.forEach((t, idx) => t.classList.toggle("sel", idx === this.cur));
     this.game.sfx.weaponSelect();
   }
 
   private launch() {
     this.game.sfx.pickup();
-    this.game.clearRestart();
     this.game.music.setScene("game");
     this.game.setState(new PlayState());
   }
@@ -150,9 +180,8 @@ export class BriefingState implements GameState {
       this.mesh.rotation.y += dt * 0.9;
       this.mesh.rotation.x += dt * 0.35;
     }
-    // Auto-advance through the roster for showcase.
     this.cycle += dt;
-    if (this.cycle > 5 && this.kinds.length > 1) this.show(this.cur + 1);
+    if (this.cycle > 5 && this.entries.length > 1) this.show(this.cur + 1);
     this.renderer.render(this.scene, this.camera);
   }
 

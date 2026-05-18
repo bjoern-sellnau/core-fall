@@ -8,7 +8,12 @@ export type PickupKind =
   | "laser"
   | "keyblue"
   | "keyred"
-  | "keyyellow";
+  | "keyyellow"
+  | "wsuperlaser"
+  | "wvulcan"
+  | "wplasma"
+  | "wfusion"
+  | "wrockets";
 
 const POWERUPS: PickupKind[] = ["shield", "rockets", "health", "laser"];
 const COLOR: Record<PickupKind, number> = {
@@ -19,6 +24,11 @@ const COLOR: Record<PickupKind, number> = {
   keyblue: 0x3a7bff,
   keyred: 0xff3a3a,
   keyyellow: 0xffd23a,
+  wsuperlaser: 0xffe27a,
+  wvulcan: 0xffe27a,
+  wplasma: 0xffe27a,
+  wfusion: 0xffe27a,
+  wrockets: 0xffe27a,
 };
 const RADIUS = 3.4;
 
@@ -30,6 +40,7 @@ interface Item {
 }
 
 const isKey = (k: PickupKind) => k.startsWith("key");
+const isWeapon = (k: PickupKind) => k.startsWith("w");
 
 /**
  * Floating, spinning power-ups and access keys. update() returns the
@@ -44,6 +55,7 @@ export class PickupField {
 
   private readonly geo = new THREE.OctahedronGeometry(1.0, 0);
   private readonly keyGeo = new THREE.TorusGeometry(0.8, 0.28, 8, 16);
+  private readonly wpnGeo = new THREE.TorusKnotGeometry(0.62, 0.24, 64, 8);
   private readonly mats = {} as Record<PickupKind, THREE.MeshBasicMaterial>;
 
   constructor(private readonly sfx: Sfx) {
@@ -60,7 +72,7 @@ export class PickupField {
   /** Add one specific pickup (used for keys). */
   add(p: THREE.Vector3, kind: PickupKind) {
     const mesh = new THREE.Mesh(
-      isKey(kind) ? this.keyGeo : this.geo,
+      isWeapon(kind) ? this.wpnGeo : isKey(kind) ? this.keyGeo : this.geo,
       this.mats[kind],
     );
     mesh.position.copy(p);
@@ -92,6 +104,7 @@ export class PickupField {
   dispose() {
     this.geo.dispose();
     this.keyGeo.dispose();
+    this.wpnGeo.dispose();
     for (const k of Object.keys(this.mats) as PickupKind[]) {
       this.mats[k].dispose();
     }

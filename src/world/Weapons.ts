@@ -77,8 +77,9 @@ export class WeaponSystem {
 
   private laser = 1;
   private rockets = 0;
-  private vulcan = 250;
+  private vulcan = 0;
   private selected: Weapon = "laser";
+  private owned = new Set<Weapon>(["laser"]);
 
   private readonly geoBolt = new THREE.BoxGeometry(0.16, 0.16, 2.0);
   private readonly geoSlug = new THREE.BoxGeometry(0.18, 0.18, 0.6);
@@ -144,25 +145,82 @@ export class WeaponSystem {
     this.vulcan += n;
   }
 
-  /** Back to the starting loadout (used when the ship is destroyed). */
-  resetLoadout() {
+  get owns() {
+    return [...this.owned];
+  }
+  has(w: Weapon) {
+    return this.owned.has(w);
+  }
+
+  /** Unlock a weapon; if already owned, top up its ammo / energy. */
+  addWeapon(w: Weapon) {
+    if (!this.owned.has(w)) {
+      this.owned.add(w);
+      if (w === "vulcan") this.vulcan += 300;
+      else if (w === "rockets") this.rockets += 6;
+      this.selected = w;
+    } else if (w === "vulcan") {
+      this.vulcan += 200;
+    } else if (w === "rockets") {
+      this.rockets += 6;
+    } else {
+      this.energy = 100;
+    }
+    this.charge = 0;
+    this.sfx.weaponSelect();
+  }
+
+  /** Carry the loadout between story levels. */
+  exportLoadout() {
+    return {
+      weapons: [...this.owned],
+      laser: this.laser,
+      vulcan: this.vulcan,
+      rockets: this.rockets,
+    };
+  }
+  importLoadout(l: {
+    weapons: string[];
+    laser: number;
+    vulcan: number;
+    rockets: number;
+  }) {
+    const ws = (l.weapons.length ? l.weapons : ["laser"]) as Weapon[];
+    this.owned = new Set(ws);
+    this.laser = l.laser;
+    this.vulcan = l.vulcan;
+    this.rockets = l.rockets;
+    this.selected = "laser";
+  }
+
+  /** Owned weapons except the starting laser (dropped on death). */
+  extraWeapons(): Weapon[] {
+    return [...this.owned].filter((w) => w !== "laser");
+  }
+
+  /** Strip back to the starting loadout (ship destroyed). */
+  resetToBase() {
+    this.owned = new Set<Weapon>(["laser"]);
     this.laser = 1;
     this.rockets = 0;
-    this.vulcan = 250;
+    this.vulcan = 0;
     this.selected = "laser";
     this.charge = 0;
   }
 
-  /** Slot 1-5 → primary, 0 → rockets. Plays a blip on change. */
+  /** Slot 1-5 → primary, 0 → rockets. Only switches to owned weapons. */
   selectSlot(slot: number) {
     let next = this.selected;
     if (slot === 0) next = "rockets";
     else if (slot >= 1 && slot <= PRIMARY.length) next = PRIMARY[slot - 1];
-    if (next !== this.selected) {
-      this.selected = next;
-      this.charge = 0;
-      this.sfx.weaponSelect();
+    if (next === this.selected) return;
+    if (!this.owned.has(next)) {
+      this.sfx.hit();
+      return;
     }
+    this.selected = next;
+    this.charge = 0;
+    this.sfx.weaponSelect();
   }
 
   kill(b: Bolt) {

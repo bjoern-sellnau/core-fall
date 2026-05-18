@@ -1,5 +1,6 @@
 import type { DoorDef } from "./Doors";
 import type { Kind } from "./Enemies";
+import type { Weapon } from "./Weapons";
 
 export type BoxTuple = [
   number, // cx
@@ -20,6 +21,7 @@ export interface LevelDef {
   tex: string; // wall texture style
   planet: string;
   company: string;
+  weapon: Weapon; // weapon this level grants
   boxes: BoxTuple[];
   doors: DoorDef[];
   factoryIdx: number[];
@@ -49,6 +51,7 @@ const L1: LevelDef = {
   tex: "panel",
   planet: "KORATH IV",
   company: "NEXUS MINING CO.",
+  weapon: "vulcan",
   boxes: [
     [0, 0, -8, 26, 16, 28, 14],
     [0, 0, -32, 9, 8, 26, 7],
@@ -133,6 +136,7 @@ interface GenOpts {
   tex: string;
   planet: string;
   company: string;
+  weapon: Weapon;
   script: string; // sequence of F/B/L/R/U/D moves
   corrLen: number;
   corrCross: number;
@@ -207,6 +211,7 @@ function gen(o: GenOpts): LevelDef {
     tex: o.tex,
     planet: o.planet,
     company: o.company,
+    weapon: o.weapon,
     boxes,
     doors: [
       {
@@ -241,6 +246,7 @@ function gen(o: GenOpts): LevelDef {
 const L2 = gen({
   name: "GLACIER WORKS",
   planet: "HOTH-9",
+  weapon: "superlaser",
   company: "CRYOCORP INDUSTRIES",
   brief:
     "The frozen pumping station: cramped iced-up tunnels that zig-zag\nthrough the rock. Fast interceptor drones. Blow the core and run.",
@@ -266,6 +272,7 @@ const L2 = gen({
 const L3 = gen({
   name: "THE FOUNDRY",
   planet: "VULCAN'S ANVIL",
+  weapon: "plasma",
   company: "MOLTEN DYNAMICS",
   brief:
     "Molten-core foundry. Cavernous blazing halls, few turns, heavy\ntank drones holding every chamber. Bring firepower.",
@@ -291,6 +298,7 @@ const L3 = gen({
 const L4 = gen({
   name: "THE LABYRINTH",
   planet: "EREBUS",
+  weapon: "rockets",
   company: "BLACKVEIN GUILD",
   brief:
     "A pitch-black maze of switchbacks. Every hostile they have, in\nthe dark. Watch your corners.",
@@ -317,6 +325,7 @@ const L4 = gen({
 const L5 = gen({
   name: "THE SPIRE",
   planet: "ASCENSION",
+  weapon: "fusion",
   company: "ORBITAL LIFT INC.",
   brief:
     "A vertical ascent through a collapsed elevator core. Climb shaft\nafter shaft to the reactor at the summit.",
@@ -342,6 +351,7 @@ const L5 = gen({
 const L6 = gen({
   name: "DEEP SHAFT",
   planet: "MARROW",
+  weapon: "vulcan",
   company: "DEEPCORE LTD.",
   brief:
     "Plunge into the drowned lower works — a descending spiral of\ndripping conduits. It only goes down.",
@@ -367,6 +377,7 @@ const L6 = gen({
 const L7 = gen({
   name: "THE SPRAWL",
   planet: "TANTALUS",
+  weapon: "superlaser",
   company: "GRID INDUSTRIES",
   brief:
     "A sprawling industrial grid that staircases sideways forever.\nLong sight-lines, relentless turret fire.",
@@ -392,6 +403,7 @@ const L7 = gen({
 const L8 = gen({
   name: "CRYO VAULT",
   planet: "NIVEN",
+  weapon: "plasma",
   company: "CRYOCORP INDUSTRIES",
   brief:
     "A heaving cryo vault that pitches up and down between freezer\nbays. Stay level, stay alive.",
@@ -417,6 +429,7 @@ const L8 = gen({
 const L9 = gen({
   name: "THE GAUNTLET",
   planet: "STYX",
+  weapon: "rockets",
   company: "IRONCLAD PMC",
   brief:
     "No cover, no rest — a brutally long straight run packed end to\nend with the worst they can throw at you.",
@@ -443,6 +456,7 @@ const L9 = gen({
 const L10 = gen({
   name: "CORE NEXUS",
   planet: "THE CORE",
+  weapon: "fusion",
   company: "NEXUS MINING CO.",
   brief:
     "The final descent: a twisting three-dimensional nexus folding\nthrough every axis to the heart of the station.",

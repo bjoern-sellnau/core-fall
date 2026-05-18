@@ -14,6 +14,7 @@ export class PilotState implements GameState {
 
   enter(game: Game) {
     this.game = game;
+    this.game.loadout = null; // fresh story run
     this.game.music.start();
     this.game.sfx.start();
     this.game.music.setScene("menu");
