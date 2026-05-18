@@ -97,7 +97,7 @@ const L1: LevelDef = {
   ],
   factoryIdx: [2, 6, 10, 14, 17],
   pickupIdx: [1, 3, 5, 11, 13, 15, 18, 21, 22, 23, 26, 27, 28, 30, 31],
-  energyIdx: [4, 10, 18],
+  energyIdx: [2, 4, 8, 10, 14, 18],
   keys: [
     { idx: 2, kind: "keyblue" },
     { idx: 8, kind: "keyyellow" },
@@ -229,7 +229,7 @@ function gen(o: GenOpts): LevelDef {
     ],
     factoryIdx: rooms.filter((_, k) => k % 2 === 0),
     pickupIdx: rooms,
-    energyIdx: rooms.filter((_, k) => k % 3 === 1),
+    energyIdx: rooms.filter((_, k) => k % 2 === 1),
     keys: [],
     core: [rb[0], rb[1], rb[2]],
     exit: [eb[0], eb[1], eb[2]],

@@ -7,6 +7,7 @@ export type PickupKind =
   | "rockets"
   | "laser"
   | "energy"
+  | "vammo"
   | "quad"
   | "chrono"
   | "keyblue"
@@ -23,11 +24,17 @@ export type PickupKind =
   | "wsmart"
   | "wmega";
 
+// Weighted so ammo / energy show up far more often than buffs —
+// the energy weapons drain fast without an auto-recharge.
 const POWERUPS: PickupKind[] = [
-  "shield",
+  "energy",
   "rockets",
   "health",
   "energy",
+  "vammo",
+  "shield",
+  "energy",
+  "rockets",
   "laser",
 ];
 const COLOR: Record<PickupKind, number> = {
@@ -36,6 +43,7 @@ const COLOR: Record<PickupKind, number> = {
   rockets: 0xff9a3a,
   laser: 0xff5ce0,
   energy: 0x66ddff,
+  vammo: 0xf4c542,
   quad: 0xff5ce0,
   chrono: 0xb060ff,
   keyblue: 0x3a7bff,

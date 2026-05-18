@@ -25,7 +25,8 @@ const PICKUP_INFO: Record<PickupKind, { css: string; label: string }> = {
   shield: { css: "#46d8ff", label: "SHIELD UP" },
   rockets: { css: "#ff9a3a", label: "ROCKETS +6" },
   laser: { css: "#ff5ce0", label: "LASER UP" },
-  energy: { css: "#66ddff", label: "ENERGY +50" },
+  energy: { css: "#66ddff", label: "ENERGY +65" },
+  vammo: { css: "#f4c542", label: "VULCAN +200" },
   quad: { css: "#ff5ce0", label: "QUAD LASER" },
   chrono: { css: "#b060ff", label: "CHRONOSPHERE" },
   keyblue: { css: "#3a7bff", label: "BLUE KEY" },
@@ -70,7 +71,15 @@ const EXTRA_BY_LEVEL: Record<number, PickupKind[]> = {
 const CHRONO_DUR = [0, 3.5, 5, 7];
 const CHRONO_COOL = [0, 14, 11, 9];
 const CHRONO_SCALE = 0.32; // world time multiplier while active
-const ENERGY_ROOM_RATE = 55; // energy/s while inside a charge room
+const ENERGY_ROOM_RATE = 85; // energy/s while inside a charge room
+const VAMMO_PICKUP = 200; // vulcan rounds per ammo pickup
+const SUPPLY_CYCLE: PickupKind[] = [
+  "energy",
+  "rockets",
+  "vammo",
+  "energy",
+  "health",
+];
 
 const MAX_HULL = 100;
 const MAX_SHIELD = 100;
@@ -222,6 +231,19 @@ export class PlayState implements GameState {
 
     this.pickups = new PickupField(this.game.sfx);
     this.pickups.spawn(this.level.pickupSpawns);
+    // A second supply cache per room (ammo / energy heavy) so the
+    // energy weapons don't dry out between charge rooms.
+    this.level.pickupSpawns.forEach((p, i) => {
+      const off = new THREE.Vector3(
+        i % 2 ? 4 : -4,
+        -2,
+        i % 3 ? 3 : -3,
+      );
+      this.pickups.add(
+        p.clone().add(off),
+        SUPPLY_CYCLE[i % SUPPLY_CYCLE.length],
+      );
+    });
     for (const k of this.level.keySpawns) {
       this.pickups.add(k.pos, k.kind as PickupKind);
     }
@@ -684,7 +706,9 @@ export class PlayState implements GameState {
         } else if (k === "laser") {
           this.weapons.addLaserLevel();
         } else if (k === "energy") {
-          this.weapons.addEnergy(50);
+          this.weapons.addEnergy(65);
+        } else if (k === "vammo") {
+          this.weapons.addVulcan(VAMMO_PICKUP);
         } else if (k === "quad") {
           this.weapons.addQuad();
         } else if (k === "chrono") {

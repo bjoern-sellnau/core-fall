@@ -166,8 +166,14 @@ export class Level {
   readonly energyZones: { pos: THREE.Vector3; r: number }[] = [];
   readonly doorDefs: DoorDef[];
 
-  private energyFx: { mat: THREE.MeshBasicMaterial; light: THREE.PointLight }[] =
-    [];
+  private energyFx: {
+    core: THREE.Mesh;
+    coreMat: THREE.MeshBasicMaterial;
+    glowMat: THREE.MeshBasicMaterial;
+    points: THREE.Points;
+    light: THREE.PointLight;
+    r: number;
+  }[] = [];
 
   private reactor: THREE.Mesh;
   private reactorLight: THREE.PointLight;
@@ -345,7 +351,9 @@ export class Level {
       });
     }
 
-    // --- Energy charge rooms: a glowing core you fly into to refuel ---
+    // --- Energy charge rooms: an unmistakable Descent-style gold-orange
+    // core, ringed by drifting embers, that you fly into to refuel ---
+    const ENERGY = 0xffaa2e;
     for (const i of def.energyIdx) {
       const b = boxes[i];
       const span = Math.min(
@@ -353,27 +361,69 @@ export class Level {
         b.max[1] - b.min[1],
         b.max[2] - b.min[2],
       );
-      const r = Math.max(6, span * 0.55);
+      const r = Math.max(7, span * 0.6);
       const c = center(i);
       this.energyZones.push({ pos: c.clone(), r });
 
-      const mat = new THREE.MeshBasicMaterial({
-        color: 0x66ddff,
+      const coreMat = new THREE.MeshBasicMaterial({
+        color: ENERGY,
         transparent: true,
-        opacity: 0.22,
+        opacity: 0.7,
         blending: THREE.AdditiveBlending,
         depthWrite: false,
       });
-      const orb = new THREE.Mesh(
-        new THREE.IcosahedronGeometry(r * 0.55, 1),
-        mat,
+      const core = new THREE.Mesh(
+        new THREE.IcosahedronGeometry(r * 0.42, 1),
+        coreMat,
       );
-      orb.position.copy(c);
-      this.group.add(orb);
-      const light = new THREE.PointLight(0x66ddff, 60, r * 3.4, 2);
+      core.position.copy(c);
+      this.group.add(core);
+
+      const glowMat = new THREE.MeshBasicMaterial({
+        color: ENERGY,
+        transparent: true,
+        opacity: 0.14,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+      });
+      const glow = new THREE.Mesh(
+        new THREE.SphereGeometry(r * 0.95, 18, 18),
+        glowMat,
+      );
+      glow.position.copy(c);
+      this.group.add(glow);
+
+      const N = 220;
+      const pp = new Float32Array(N * 3);
+      for (let k = 0; k < N; k++) {
+        const u = Math.random();
+        const rad = r * 0.95 * Math.cbrt(u);
+        const th = Math.random() * Math.PI * 2;
+        const ph = Math.acos(2 * Math.random() - 1);
+        pp[k * 3] = rad * Math.sin(ph) * Math.cos(th);
+        pp[k * 3 + 1] = rad * Math.cos(ph);
+        pp[k * 3 + 2] = rad * Math.sin(ph) * Math.sin(th);
+      }
+      const pg = new THREE.BufferGeometry();
+      pg.setAttribute("position", new THREE.BufferAttribute(pp, 3));
+      const points = new THREE.Points(
+        pg,
+        new THREE.PointsMaterial({
+          color: ENERGY,
+          size: 0.55,
+          transparent: true,
+          opacity: 0.9,
+          blending: THREE.AdditiveBlending,
+          depthWrite: false,
+        }),
+      );
+      points.position.copy(c);
+      this.group.add(points);
+
+      const light = new THREE.PointLight(ENERGY, 140, r * 4, 2);
       light.position.copy(c);
       this.group.add(light);
-      this.energyFx.push({ mat, light });
+      this.energyFx.push({ core, coreMat, glowMat, points, light, r });
     }
 
     const positions = new Float32Array(merged);
@@ -439,10 +489,16 @@ export class Level {
         1.2 + pulse * 0.4;
     }
 
-    const ep = 0.6 + Math.sin(this.elapsed * 2.4) * 0.32;
+    const ep = 0.6 + Math.sin(this.elapsed * 2.6) * 0.4;
     for (const f of this.energyFx) {
-      f.mat.opacity = 0.16 + ep * 0.16;
-      f.light.intensity = 45 + ep * 35;
+      f.coreMat.opacity = 0.5 + ep * 0.4;
+      f.core.rotation.y += dt * 0.7;
+      f.core.rotation.x += dt * 0.35;
+      f.core.scale.setScalar(0.9 + ep * 0.22);
+      f.glowMat.opacity = 0.1 + ep * 0.14;
+      f.points.rotation.y += dt * 0.45;
+      f.points.rotation.x -= dt * 0.18;
+      f.light.intensity = 110 + ep * 90;
     }
 
     for (const s of this.sectors) {
