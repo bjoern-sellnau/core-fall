@@ -456,6 +456,28 @@
   list-style: none;
   margin: 0;
   padding: 0;
+  max-height: 620px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 138, 20, 0.6) transparent;
+}
+.cf-title .menu ul::-webkit-scrollbar {
+  width: 8px;
+}
+.cf-title .menu ul::-webkit-scrollbar-thumb {
+  background: rgba(255, 138, 20, 0.5);
+}
+/* Dense layout for the long lists (controls / missions). */
+.cf-title .menu.compact li {
+  font-size: 26px;
+  padding: 7px 6px;
+}
+.cf-title .menu.compact li .cursor {
+  width: 24px;
+}
+.cf-title .menu.compact li .hint {
+  font-size: 20px;
 }
 .cf-title .menu li {
   display: flex;
@@ -474,6 +496,21 @@
 }
 .cf-title .menu li:last-child {
   border-bottom: none;
+}
+.cf-title .menu li.note {
+  display: block;
+  font-family: "VT323", monospace;
+  font-size: 21px;
+  letter-spacing: 0.06em;
+  line-height: 1.5;
+  color: var(--t-dim);
+  text-transform: uppercase;
+  cursor: default;
+  padding: 6px 6px 12px;
+  border-bottom: 1px solid rgba(255, 138, 20, 0.35);
+}
+.cf-title .menu li.note b {
+  color: var(--t-acid);
 }
 .cf-title .menu li .cursor {
   width: 32px;

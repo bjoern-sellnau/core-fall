@@ -201,6 +201,13 @@ export class MenuState implements GameState {
         <li data-i="2"><span class="cursor">▶</span><span class="label">Back</span><span class="hint"></span></li>`;
     } else {
       this.titleEl.textContent = "CONTROL BINDINGS";
+      const note =
+        `<li class="note">` +
+        `<b>FIXED KEYS</b> &nbsp; LMB FIRE &nbsp;·&nbsp; 1-6 PRIMARY &nbsp;·&nbsp; ` +
+        `0 CYCLE MISSILE &nbsp;·&nbsp; 7 CHRONOSPHERE &nbsp;·&nbsp; ESC PAUSE/BACK<br>` +
+        `Select a row and press <b>ENTER</b>, then hit the new key ` +
+        `(<b>ESC</b> cancels). Bindings save automatically.` +
+        `</li>`;
       const rows = ACTIONS.map(
         (a, i) =>
           `<li data-i="${i}"><span class="cursor">▶</span><span class="label">${ACTION_LABEL[a]}</span><span class="hint">${
@@ -215,10 +222,17 @@ export class MenuState implements GameState {
       rows.push(
         `<li data-i="${ACTIONS.length + 1}"><span class="cursor">▶</span><span class="label">Back</span><span class="hint"></span></li>`,
       );
-      html = rows.join("");
+      html = note + rows.join("");
     }
+    this.menuEl.classList.toggle(
+      "compact",
+      this.view === "controls" || this.view === "missions",
+    );
     this.listEl.innerHTML = html;
-    this.items = [...this.listEl.querySelectorAll<HTMLElement>("li")];
+    // Notes are informational only — never part of keyboard navigation.
+    this.items = [
+      ...this.listEl.querySelectorAll<HTMLElement>("li:not(.note)"),
+    ];
     if (!keepSel || this.sel >= this.items.length) this.sel = 0;
     this.paint();
     this.items.forEach((el, idx) => {
@@ -231,9 +245,11 @@ export class MenuState implements GameState {
   }
 
   private paint() {
-    this.items.forEach((el, idx) =>
-      el.classList.toggle("sel", idx === this.sel),
-    );
+    this.items.forEach((el, idx) => {
+      const on = idx === this.sel;
+      el.classList.toggle("sel", on);
+      if (on) el.scrollIntoView({ block: "nearest" });
+    });
   }
 
   private arm() {
