@@ -140,6 +140,7 @@ export class WeaponSystem {
   }
   addRockets(n: number) {
     this.rockets += n;
+    this.owned.add("rockets"); // picking up rockets unlocks the launcher
   }
   addVulcan(n: number) {
     this.vulcan += n;

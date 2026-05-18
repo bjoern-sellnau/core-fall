@@ -104,6 +104,7 @@ export class PlayState implements GameState {
   private escapeLight!: THREE.PointLight;
   private winBoomTimer = 0;
   private winInit = false;
+  private readonly winStart = new THREE.Vector3();
   private starfield!: THREE.Points;
   private warp!: THREE.LineSegments;
   private deathTimer = 0;
@@ -112,7 +113,6 @@ export class PlayState implements GameState {
   private livesEl!: HTMLElement;
   private deathEl!: HTMLElement;
   private winFade!: HTMLElement;
-  private hyperDone = false;
   private deathTitleEl!: HTMLElement;
   private deathSubEl!: HTMLElement;
 
@@ -526,6 +526,7 @@ export class PlayState implements GameState {
           this.winTimer = 0;
           this.winBoomTimer = 0;
           this.winInit = false;
+          this.winStart.copy(this.ship.position);
           this.spaceArmed = false;
           this.root.classList.add("hidden");
           this.game.input.exitPointerLock();
@@ -674,66 +675,79 @@ export class PlayState implements GameState {
     this.pause.classList.add("hidden");
     this.winTimer += dt;
 
-    // Self-contained cinematic in open space: the ship flies out of
-    // the mine while a trailing camera keeps it framed and pulls back,
-    // the mine exploding behind it.
+    const T_HYPER = 3.0; // leave the mine, engage hyperdrive
+    const T_JUMP = 4.2; // light-speed flash
+    const T_BLACK = 4.7; // pure black screen
+    const T_TEXT = 5.4; // completion text
+    const t = this.winTimer;
+
+    // --- Phase 1: still inside the mine — fly out, mine blows behind ---
+    if (t < T_HYPER) {
+      this.ship.model.visible = true;
+      this.ship.model.rotation.set(0, 0, 0); // nose along -Z (outward)
+      const sz = this.winStart.z - (24 * t + 5 * t * t);
+      this.ship.position.set(this.winStart.x, this.winStart.y, sz);
+      this.ship.model.position.copy(this.ship.position);
+      this.escapeLight.intensity = 180;
+      this.escapeLight.position.set(
+        this.winStart.x,
+        this.winStart.y + 3,
+        sz - 2,
+      );
+      // Camera ahead of the ship looking back at it and the mine.
+      this.camera.position.set(
+        this.winStart.x + 5,
+        this.winStart.y + 3.5,
+        sz - (16 + 6 * t),
+      );
+      this.camera.lookAt(this.winStart.x, this.winStart.y, sz + 10);
+      this.level.update(dt, this.ship.position);
+
+      this.deathFx.update(dt);
+      this.winBoomTimer -= dt;
+      if (this.winBoomTimer <= 0) {
+        this.winBoomTimer = 0.22;
+        this.deathFx.trigger(
+          new THREE.Vector3(
+            this.winStart.x + (Math.random() - 0.5) * 24,
+            this.winStart.y + (Math.random() - 0.5) * 18,
+            sz + 16 + Math.random() * 55,
+          ),
+          { laser: 0, rockets: 0 },
+        );
+        this.game.sfx.explosion(2.6);
+      }
+      this.winFade.style.opacity = "0";
+      return;
+    }
+
+    // --- Phase 2: cut to open space + Star Wars hyperdrive ---
     if (!this.winInit) {
       this.winInit = true;
       this.level.group.visible = false;
       this.scene.fog = null;
-      this.scene.background = new THREE.Color(0x05060c);
+      (this.scene.background as THREE.Color).set(0x05060c);
       this.starfield.visible = true;
       this.deathFx.reset();
       this.ship.model.visible = true;
       this.ship.model.rotation.set(0, Math.PI, 0); // nose along +Z
-    }
-
-    const T_HYPER = 3.2; // hyperdrive engages
-    const T_JUMP = 4.4; // light-speed flash
-    const T_BLACK = 4.9; // pure black screen
-    const T_TEXT = 5.6; // completion text
-    const t = this.winTimer;
-
-    // Ship cruises out (+Z); on hyperdrive it shoots away to a point.
-    let z = -10 + 18 * t + 4 * t * t;
-    if (t > T_HYPER) z += 900 * (t - T_HYPER) * (t - T_HYPER);
-    this.ship.position.set(0, 0, z);
-    this.ship.model.position.copy(this.ship.position);
-    this.escapeLight.intensity = 190;
-    this.escapeLight.position.set(0, 4, z + 3);
-
-    // Smooth 3/4-rear camera that steadily pulls back (no swinging).
-    const back = 13 + t * 7;
-    const cz = Math.min(z, -10 + 18 * t + 4 * t * t);
-    this.camera.position.set(-6, 3.4, cz - back);
-    this.camera.lookAt(0, 0.5, cz + 8);
-
-    if (t > T_HYPER && !this.hyperDone) {
-      this.hyperDone = true;
       this.game.sfx.spawn(); // hyperdrive whoosh
     }
 
-    // Explosion chain behind the ship — only before the jump.
-    this.deathFx.update(dt);
-    this.winBoomTimer -= dt;
-    if (this.winBoomTimer <= 0 && t < T_HYPER) {
-      this.winBoomTimer = 0.22;
-      this.deathFx.trigger(
-        new THREE.Vector3(
-          (Math.random() - 0.5) * 26,
-          (Math.random() - 0.5) * 20,
-          z - 24 - Math.random() * 55,
-        ),
-        { laser: 0, rockets: 0 },
-      );
-      this.game.sfx.explosion(2.6);
-    }
+    const ht = t - T_HYPER;
+    const z = -20 + 60 * ht + 700 * ht * ht; // streaks away fast
+    this.ship.position.set(0, 0, z);
+    this.ship.model.position.copy(this.ship.position);
+    this.escapeLight.intensity = 200;
+    this.escapeLight.position.set(0, 4, z + 3);
+    this.camera.position.set(-6, 3.4, -20 + 18 * ht - (14 + ht * 8));
+    this.camera.lookAt(0, 0.5, this.camera.position.z + 30);
 
     // Hyperdrive starlines: streaks erupt and stretch past the camera.
-    if (t > T_HYPER && t < T_BLACK) {
+    if (t < T_BLACK) {
       this.starfield.visible = false;
       this.warp.visible = true;
-      const k = Math.min(1, (t - T_HYPER) / (T_JUMP - T_HYPER));
+      const k = Math.min(1, ht / (T_JUMP - T_HYPER));
       this.warp.position.z = this.camera.position.z + 40;
       this.warp.scale.set(1, 1, 1 + k * 60);
       (this.warp.material as THREE.LineBasicMaterial).opacity =
