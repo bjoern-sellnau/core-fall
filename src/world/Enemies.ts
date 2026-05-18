@@ -17,8 +17,6 @@ const LUNGE_TIME = 0.32;
 const SHOOT_RANGE = 95;
 const EBOLT_SPEED = 58;
 const EBOLT_LIFE = 3.5;
-const ROCKET_TRIGGER = 3.5;
-const SPLASH_RADIUS = 13;
 const FACTORY_RADIUS = 3.6;
 
 export interface DiffConfig {
@@ -231,6 +229,14 @@ export class EnemySwarm {
   get factoryCount(): number {
     return this.factories.length;
   }
+  /** Live targetable points (drones, factories, reactor) for homing. */
+  enemyPoints(): THREE.Vector3[] {
+    const pts: THREE.Vector3[] = [];
+    for (const d of this.drones) if (!d.dead) pts.push(d.mesh.position);
+    for (const f of this.factories) if (!f.dead) pts.push(f.pos);
+    if (this.reactorAliveFlag) pts.push(this.reactorPos);
+    return pts;
+  }
   get threat(): number {
     return this.threatLevel;
   }
@@ -359,7 +365,7 @@ export class EnemySwarm {
       for (const r of rockets) {
         if (this.reactorPos.distanceTo(r.mesh.position) < 9) {
           weapons.detonateRocket(r);
-          this.reactorHp -= 8;
+          this.reactorHp -= r.dmgReactor;
         }
       }
       if (this.reactorHp <= 0) {
@@ -597,18 +603,19 @@ export class EnemySwarm {
       }
     }
     for (const r of rockets) {
-      if (dr.mesh.position.distanceTo(r.mesh.position) < ROCKET_TRIGGER) {
+      if (dr.mesh.position.distanceTo(r.mesh.position) < r.trigger) {
         const center = r.mesh.position.clone();
+        const splash = r.splash;
         weapons.detonateRocket(r);
         for (const o of this.drones) {
-          if (!o.dead && o.mesh.position.distanceTo(center) < SPLASH_RADIUS) {
+          if (!o.dead && o.mesh.position.distanceTo(center) < splash) {
             o.dead = true;
             this.explode(o.mesh.position, 1.4);
           }
         }
         for (const f of this.factories) {
-          if (!f.dead && f.pos.distanceTo(center) < SPLASH_RADIUS) {
-            f.hp -= 6;
+          if (!f.dead && f.pos.distanceTo(center) < splash) {
+            f.hp -= r.dmgFactory;
             if (f.hp <= 0) {
               f.dead = true;
               this.explode(f.pos, 2);
@@ -643,7 +650,7 @@ export class EnemySwarm {
     for (const r of rockets) {
       if (f.pos.distanceTo(r.mesh.position) < FACTORY_RADIUS + 1.5) {
         weapons.detonateRocket(r);
-        f.hp -= 6;
+        f.hp -= r.dmgFactory;
         if (f.hp <= 0) {
           f.dead = true;
           this.explode(f.pos, 2.2);

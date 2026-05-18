@@ -29,6 +29,8 @@ export class Game {
     laser: number;
     vulcan: number;
     rockets: number;
+    quad: boolean;
+    chrono: number;
   } | null = null;
   clearRestart() {
     this.loadout = null;

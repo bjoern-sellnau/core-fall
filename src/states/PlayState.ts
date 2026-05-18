@@ -7,7 +7,12 @@ import { LeaderboardState } from "./LeaderboardState";
 import { PhysicsWorld, RAPIER } from "../physics/Physics";
 import { Level } from "../world/Level";
 import { Ship } from "../world/Ship";
-import { WeaponSystem, WEAPON_NAME, type Weapon } from "../world/Weapons";
+import {
+  WeaponSystem,
+  WEAPON_NAME,
+  SECONDARY,
+  type Weapon,
+} from "../world/Weapons";
 import { EnemySwarm, difficultyConfig } from "../world/Enemies";
 import { LEVELS } from "../world/levels";
 import { PickupField, type PickupKind } from "../world/Pickups";
@@ -20,6 +25,9 @@ const PICKUP_INFO: Record<PickupKind, { css: string; label: string }> = {
   shield: { css: "#46d8ff", label: "SHIELD UP" },
   rockets: { css: "#ff9a3a", label: "ROCKETS +6" },
   laser: { css: "#ff5ce0", label: "LASER UP" },
+  energy: { css: "#66ddff", label: "ENERGY +50" },
+  quad: { css: "#ff5ce0", label: "QUAD LASER" },
+  chrono: { css: "#b060ff", label: "CHRONOSPHERE" },
   keyblue: { css: "#3a7bff", label: "BLUE KEY" },
   keyred: { css: "#ff3a3a", label: "RED KEY" },
   keyyellow: { css: "#ffd23a", label: "YELLOW KEY" },
@@ -27,7 +35,12 @@ const PICKUP_INFO: Record<PickupKind, { css: string; label: string }> = {
   wvulcan: { css: "#ffe27a", label: "VULCAN" },
   wplasma: { css: "#ffe27a", label: "PLASMA" },
   wfusion: { css: "#ffe27a", label: "FUSION" },
-  wrockets: { css: "#ffe27a", label: "ROCKETS" },
+  wrockets: { css: "#ffe27a", label: "CONCUSSION" },
+  wspreadfire: { css: "#ffe27a", label: "SPREADFIRE" },
+  whoming: { css: "#ffe27a", label: "HOMING MSL" },
+  wproximity: { css: "#ffe27a", label: "PROX BOMB" },
+  wsmart: { css: "#ffe27a", label: "SMART MSL" },
+  wmega: { css: "#ffe27a", label: "MEGA MSL" },
 };
 
 const WPN_OF: Partial<Record<PickupKind, Weapon>> = {
@@ -36,7 +49,28 @@ const WPN_OF: Partial<Record<PickupKind, Weapon>> = {
   wplasma: "plasma",
   wfusion: "fusion",
   wrockets: "rockets",
+  wspreadfire: "spreadfire",
+  whoming: "homing",
+  wproximity: "proximity",
+  wsmart: "smart",
+  wmega: "mega",
 };
+
+// The campaign hands out the extended arsenal one weapon at a time so
+// every system becomes available over the 10 missions.
+const EXTRA_BY_LEVEL: Record<number, PickupKind[]> = {
+  1: ["wspreadfire"],
+  2: ["whoming"],
+  3: ["wproximity"],
+  4: ["wsmart"],
+  5: ["wmega"],
+};
+
+// Chrono active duration / cooldown (seconds) by chrono level (1..3).
+const CHRONO_DUR = [0, 3.5, 5, 7];
+const CHRONO_COOL = [0, 14, 11, 9];
+const CHRONO_SCALE = 0.32; // world time multiplier while active
+const ENERGY_ROOM_RATE = 55; // energy/s while inside a charge room
 
 const MAX_HULL = 100;
 const MAX_SHIELD = 100;
@@ -90,6 +124,12 @@ export class PlayState implements GameState {
   private flashColor = "#fff";
   private wantMenu = false;
   private musicKeyDown = false;
+  private chargeEl!: HTMLElement;
+  private chronoEl!: HTMLElement;
+  private chronoActive = 0;
+  private chronoCool = 0;
+  private fireWasDown = false;
+  private digitDown: boolean[] = [];
 
   private phase: "play" | "dead" | "gameover" | "won" = "play";
   private selfDestruct = false;
@@ -174,6 +214,11 @@ export class PlayState implements GameState {
       this.level.corePosition,
     );
     this.scene.add(this.enemies.group);
+    this.weapons.setTargetSource(() => this.enemies.enemyPoints());
+
+    // Carry the weapon loadout across story levels (before deciding which
+    // extra pickups still need to be offered this mission).
+    if (this.game.loadout) this.weapons.importLoadout(this.game.loadout);
 
     this.pickups = new PickupField(this.game.sfx);
     this.pickups.spawn(this.level.pickupSpawns);
@@ -190,10 +235,27 @@ export class PlayState implements GameState {
         ]
       : this.level.spawnPosition.clone();
     this.pickups.add(wpos.clone(), wkind);
-    this.scene.add(this.pickups.group);
 
-    // Carry the weapon loadout across story levels.
-    if (this.game.loadout) this.weapons.importLoadout(this.game.loadout);
+    // Spread the extended arsenal + gadgets across the campaign.
+    const spawns = this.level.pickupSpawns;
+    const slot = (i: number): THREE.Vector3 =>
+      spawns.length
+        ? spawns[Math.min(i, spawns.length - 1)].clone()
+        : this.level.spawnPosition.clone().add(new THREE.Vector3(0, 2, i));
+    let si = 4;
+    for (const k of EXTRA_BY_LEVEL[this.game.levelIndex] ?? []) {
+      this.pickups.add(slot(si), k);
+      si += 3;
+    }
+    if (this.game.levelIndex >= 1 && !this.weapons.hasQuad) {
+      this.pickups.add(slot(si), "quad");
+      si += 3;
+    }
+    // Chronosphere appears from mission 3 onward; carried after that.
+    if (this.game.levelIndex >= 2 && this.weapons.chronoLevel < 3) {
+      this.pickups.add(slot(si), "chrono");
+    }
+    this.scene.add(this.pickups.group);
 
     this.deathFx = new DeathFx();
     this.scene.add(this.deathFx.group);
@@ -254,13 +316,14 @@ export class PlayState implements GameState {
     this.root.innerHTML = `
       <div class="hud__flash" id="cf-flash"></div>
       <div class="hud__pickup" id="cf-pickup"></div>
+      <div class="hud__charge" id="cf-charge">⚡ ENERGY CHARGING</div>
       <div class="hud__crosshair"></div>
       <div class="hud__reactor hidden" id="cf-reactor-wrap">
         <div class="hud__bar-label">REACTOR</div>
         <div class="hud__bar"><div class="hud__bar-fill hud__bar-fill--reactor" id="cf-reactor"></div></div>
       </div>
       <div class="hud__sd hidden" id="cf-sd"></div>
-      <div class="hud__hint">LMB FIRE &middot; 1-5/0 WEAPON &middot; V VIEW &middot; M MAP &middot; R ROLL &middot; H HEIGHT</div>
+      <div class="hud__hint">LMB FIRE &middot; 1-6 GUN &middot; 0 MISSILE &middot; 7 CHRONO &middot; V VIEW &middot; M MAP &middot; R ROLL &middot; H HEIGHT</div>
       <div class="hud__readout">
         COREFALL // TEST RUN<br />
         SPEED&nbsp;&nbsp;&nbsp;&nbsp; <span id="cf-speed">0</span> u/s<br />
@@ -299,6 +362,7 @@ export class PlayState implements GameState {
     this.pickupEl = this.root.querySelector<HTMLElement>("#cf-pickup")!;
     this.livesEl = this.root.querySelector<HTMLElement>("#cf-lives")!;
     this.keysEl = this.root.querySelector<HTMLElement>("#cf-keys")!;
+    this.chargeEl = this.root.querySelector<HTMLElement>("#cf-charge")!;
 
     this.pause = document.createElement("div");
     this.pause.className = "cf-pause hidden";
@@ -335,6 +399,11 @@ export class PlayState implements GameState {
     game.container.appendChild(this.winFade);
     this.deathEl.style.zIndex = "40";
 
+    // Slow-motion vignette while the Chronosphere is engaged.
+    this.chronoEl = document.createElement("div");
+    this.chronoEl.className = "cf-chrono hidden";
+    game.container.appendChild(this.chronoEl);
+
     this.deathTitleEl =
       this.deathEl.querySelector<HTMLElement>("#cf-death-title")!;
     this.deathSubEl = this.deathEl.querySelector<HTMLElement>("#cf-death-sub")!;
@@ -359,6 +428,8 @@ export class PlayState implements GameState {
       rockets: this.weapons.rocketAmmo,
     });
 
+    this.chronoActive = 0;
+    this.chronoEl.classList.add("hidden");
     this.phase = this.lives > 0 ? "dead" : "gameover";
     this.deathTimer = 0;
     this.spaceArmed = false;
@@ -403,6 +474,7 @@ export class PlayState implements GameState {
       drop(("w" + w) as PickupKind);
     }
     for (let i = 1; i < this.weapons.laserLevel; i++) drop("laser");
+    if (this.weapons.hasQuad) drop("quad");
     this.weapons.resetToBase();
 
     this.ship.respawn(this.level.spawnPosition, this.level.spawnQuaternion);
@@ -484,9 +556,21 @@ export class PlayState implements GameState {
         this.spawned = true;
         this.game.sfx.spawn();
       }
-      this.ship.update(dt, this.game.input);
-      this.physics.step(dt);
-      this.level.update(dt, this.ship.position);
+      // Chronosphere bullet-time scales the whole world clock; the HUD
+      // and the chrono/escape timers keep running on real time.
+      this.chronoCool = Math.max(0, this.chronoCool - dt);
+      if (this.chronoActive > 0) {
+        this.chronoActive = Math.max(0, this.chronoActive - dt);
+        if (this.chronoActive === 0) {
+          this.chronoCool = CHRONO_COOL[this.weapons.chronoLevel] || 12;
+        }
+      }
+      const sdt = this.chronoActive > 0 ? dt * CHRONO_SCALE : dt;
+      this.chronoEl.classList.toggle("hidden", this.chronoActive <= 0);
+
+      this.ship.update(sdt, this.game.input);
+      this.physics.step(sdt);
+      this.level.update(sdt, this.ship.position);
 
       this.ship.model.position.copy(this.ship.position);
       this.ship.model.quaternion.copy(this.ship.quaternion);
@@ -498,25 +582,55 @@ export class PlayState implements GameState {
         this.ship.syncCamera(this.camera);
       }
 
-      this.doors.update(dt, this.ship.position, this.keys);
+      this.doors.update(sdt, this.ship.position, this.keys);
 
-      // Weapon selection: 1-5 primary, 0 rockets.
-      for (let s = 0; s <= 5; s++) {
-        if (this.game.input.isDown(`Digit${s}`)) this.weapons.selectSlot(s);
+      // Weapon selection: 1-6 primary, 0 cycles missiles, 7 chrono.
+      // Edge-triggered so holding 0 doesn't spin through missiles.
+      for (let s = 0; s <= 7; s++) {
+        const d = this.game.input.isDown(`Digit${s}`);
+        if (d && !this.digitDown[s]) this.weapons.selectSlot(s);
+        this.digitDown[s] = d;
       }
 
       this.tmpFwd.set(0, 0, -1).applyQuaternion(this.ship.quaternion);
       this.tmpRight.set(1, 0, 0).applyQuaternion(this.ship.quaternion);
+      const fireDown = this.game.input.isMouseDown(0);
+      if (
+        this.weapons.current === "chrono" &&
+        fireDown &&
+        !this.fireWasDown &&
+        this.chronoActive <= 0 &&
+        this.chronoCool <= 0 &&
+        this.weapons.chronoLevel > 0
+      ) {
+        this.chronoActive = CHRONO_DUR[this.weapons.chronoLevel] || 3.5;
+        this.game.sfx.spawn();
+      }
+      this.fireWasDown = fireDown;
       this.weapons.fire(
-        this.game.input.isMouseDown(0),
+        fireDown,
         this.ship.position,
         this.tmpFwd,
         this.tmpRight,
       );
 
-      this.weapons.update(dt);
-      this.enemies.update(dt, this.ship.position, this.weapons);
+      this.weapons.update(sdt);
+      this.enemies.update(sdt, this.ship.position, this.weapons);
       this.game.music.setIntensity(this.enemies.threat);
+
+      // Energy charge rooms: top up while inside the glowing core.
+      let charging = false;
+      for (const z of this.level.energyZones) {
+        if (this.ship.position.distanceTo(z.pos) < z.r) {
+          charging = true;
+          break;
+        }
+      }
+      if (charging && this.weapons.energy01 < 1) {
+        this.weapons.addEnergy(ENERGY_ROOM_RATE * dt);
+      }
+      this.chargeEl.style.opacity =
+        charging && this.weapons.energy01 < 1 ? "1" : "0";
 
       // Reactor health bar + self-destruct / escape logic.
       if (this.enemies.reactorAlive && this.enemies.reactorHp01 < 1) {
@@ -569,6 +683,12 @@ export class PlayState implements GameState {
           this.weapons.addRockets(ROCKET_PICKUP);
         } else if (k === "laser") {
           this.weapons.addLaserLevel();
+        } else if (k === "energy") {
+          this.weapons.addEnergy(50);
+        } else if (k === "quad") {
+          this.weapons.addQuad();
+        } else if (k === "chrono") {
+          this.weapons.addChrono();
         } else if (k === "keyblue") {
           this.keys.blue = true;
         } else if (k === "keyred") {
@@ -582,7 +702,11 @@ export class PlayState implements GameState {
         this.flashT = 0.55;
         this.flashColor = info.css;
         this.pickupEl.textContent =
-          k === "laser" ? `LASER L${this.weapons.laserLevel}` : info.label;
+          k === "laser"
+            ? `LASER L${this.weapons.laserLevel}`
+            : k === "chrono"
+              ? `CHRONO L${this.weapons.chronoLevel}`
+              : info.label;
         this.pickupEl.style.color = info.css;
       }
 
@@ -640,16 +764,29 @@ export class PlayState implements GameState {
       this.hullEl.style.width = `${Math.max(0, (this.hull / MAX_HULL) * 100).toFixed(0)}%`;
       this.shieldEl.style.width = `${((this.shield / MAX_SHIELD) * 100).toFixed(0)}%`;
       const wp = this.weapons.current;
+      const isLaser = wp === "laser" || wp === "superlaser";
       this.rktEl.textContent =
-        wp === "laser" || wp === "superlaser"
-          ? `${WEAPON_NAME[wp]} L${this.weapons.laserLevel}`
-          : WEAPON_NAME[wp];
+        wp === "chrono"
+          ? `CHRONOSPHERE L${this.weapons.chronoLevel}`
+          : isLaser
+            ? `${WEAPON_NAME[wp]} L${this.weapons.laserLevel}${
+                this.weapons.hasQuad ? " [QUAD]" : ""
+              }`
+            : WEAPON_NAME[wp];
       this.laserEl.textContent =
-        wp === "rockets"
-          ? `x${this.weapons.rocketAmmo}`
-          : wp === "vulcan"
-            ? `x${this.weapons.vulcanAmmo}`
-            : "";
+        wp === "chrono"
+          ? this.chronoActive > 0
+            ? `ACTIVE ${this.chronoActive.toFixed(1)}s`
+            : this.chronoCool > 0
+              ? `CHARGING ${this.chronoCool.toFixed(0)}s`
+              : this.weapons.chronoLevel > 0
+                ? "READY"
+                : "—"
+          : SECONDARY.includes(wp)
+            ? `x${this.weapons.rocketAmmo}`
+            : wp === "vulcan"
+              ? `x${this.weapons.vulcanAmmo}`
+              : "";
       const e = this.weapons.energy01;
       this.energyEl.style.width = `${(e * 100).toFixed(0)}%`;
       this.energyEl.classList.toggle("hud__energy-fill--low", e < 0.25);
@@ -871,6 +1008,7 @@ export class PlayState implements GameState {
     this.pause.remove();
     this.deathEl.remove();
     this.winFade.remove();
+    this.chronoEl.remove();
     this.mapView.remove();
     this.starfield.geometry.dispose();
     (this.starfield.material as THREE.Material).dispose();

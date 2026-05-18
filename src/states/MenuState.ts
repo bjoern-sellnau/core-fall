@@ -3,6 +3,7 @@ import type { GameState } from "./GameState";
 import { PilotState } from "./PilotState";
 import { DifficultyState } from "./DifficultyState";
 import { LeaderboardState } from "./LeaderboardState";
+import { NexusState } from "./NexusState";
 import { LEVELS } from "../world/levels";
 
 /** Retro 90s Descent-style COREFALL title screen (from Claude Design). */
@@ -172,13 +173,14 @@ export class MenuState implements GameState {
         ["Story", ""],
         ["Missions", `${LEVELS.length} OPS`],
         ["Leaderboard", "RANKS"],
+        ["Nexus Database", "INTEL"],
         ["Options", "CFG"],
         ["Level Editor", "— LOCKED —"],
       ];
       html = rows
         .map(
           ([l, h], i) =>
-            `<li data-i="${i}"${i === 4 ? ' class="lock"' : ""}><span class="cursor">▶</span><span class="label">${l}</span><span class="hint">${h}</span></li>`,
+            `<li data-i="${i}"${i === 5 ? ' class="lock"' : ""}><span class="cursor">▶</span><span class="label">${l}</span><span class="hint">${h}</span></li>`,
         )
         .join("");
     } else if (this.view === "missions") {
@@ -251,6 +253,9 @@ export class MenuState implements GameState {
         this.game.sfx.pickup();
         this.game.setState(new LeaderboardState());
       } else if (idx === 3) {
+        this.game.sfx.pickup();
+        this.game.setState(new NexusState());
+      } else if (idx === 4) {
         this.view = "options";
         this.game.sfx.weaponSelect();
         this.renderList();

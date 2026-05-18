@@ -148,6 +148,54 @@ canvas {
   text-shadow: 0 0 16px currentColor;
 }
 
+.hud__charge {
+  position: absolute;
+  bottom: 5.4rem;
+  right: 1.5rem;
+  font-size: 0.95rem;
+  font-weight: 900;
+  letter-spacing: 0.25rem;
+  color: #66ddff;
+  text-shadow: 0 0 14px rgba(102, 221, 255, 0.9);
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  animation: cf-blink 0.6s steps(2, start) infinite;
+}
+
+/* Chronosphere bullet-time vignette. */
+.cf-chrono {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 25;
+  background:
+    radial-gradient(
+      ellipse at 50% 50%,
+      rgba(120, 90, 255, 0) 45%,
+      rgba(120, 90, 255, 0.22) 100%
+    ),
+    repeating-linear-gradient(
+      0deg,
+      rgba(150, 120, 255, 0.06) 0,
+      rgba(150, 120, 255, 0.06) 1px,
+      transparent 2px,
+      transparent 4px
+    );
+}
+.cf-chrono::after {
+  content: "▣ CHRONOSPHERE ENGAGED";
+  position: absolute;
+  top: 3.2rem;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 1.1rem;
+  font-weight: 900;
+  letter-spacing: 0.35rem;
+  color: #c8a0ff;
+  text-shadow: 0 0 16px rgba(176, 96, 255, 0.9);
+  animation: cf-blink 0.5s steps(2, start) infinite;
+}
+
 .hud__reactor {
   position: absolute;
   top: 3.4rem;

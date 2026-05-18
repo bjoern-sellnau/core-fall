@@ -163,7 +163,11 @@ export class Level {
   readonly factorySpawns: THREE.Vector3[] = [];
   readonly pickupSpawns: THREE.Vector3[] = [];
   readonly keySpawns: { pos: THREE.Vector3; kind: string }[] = [];
+  readonly energyZones: { pos: THREE.Vector3; r: number }[] = [];
   readonly doorDefs: DoorDef[];
+
+  private energyFx: { mat: THREE.MeshBasicMaterial; light: THREE.PointLight }[] =
+    [];
 
   private reactor: THREE.Mesh;
   private reactorLight: THREE.PointLight;
@@ -341,6 +345,37 @@ export class Level {
       });
     }
 
+    // --- Energy charge rooms: a glowing core you fly into to refuel ---
+    for (const i of def.energyIdx) {
+      const b = boxes[i];
+      const span = Math.min(
+        b.max[0] - b.min[0],
+        b.max[1] - b.min[1],
+        b.max[2] - b.min[2],
+      );
+      const r = Math.max(6, span * 0.55);
+      const c = center(i);
+      this.energyZones.push({ pos: c.clone(), r });
+
+      const mat = new THREE.MeshBasicMaterial({
+        color: 0x66ddff,
+        transparent: true,
+        opacity: 0.22,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+      });
+      const orb = new THREE.Mesh(
+        new THREE.IcosahedronGeometry(r * 0.55, 1),
+        mat,
+      );
+      orb.position.copy(c);
+      this.group.add(orb);
+      const light = new THREE.PointLight(0x66ddff, 60, r * 3.4, 2);
+      light.position.copy(c);
+      this.group.add(light);
+      this.energyFx.push({ mat, light });
+    }
+
     const positions = new Float32Array(merged);
     const indices = new Uint32Array(positions.length / 3);
     for (let i = 0; i < indices.length; i++) indices[i] = i;
@@ -402,6 +437,12 @@ export class Level {
       this.reactorLight.intensity = 150 * pulse;
       (this.reactor.material as THREE.MeshStandardMaterial).emissiveIntensity =
         1.2 + pulse * 0.4;
+    }
+
+    const ep = 0.6 + Math.sin(this.elapsed * 2.4) * 0.32;
+    for (const f of this.energyFx) {
+      f.mat.opacity = 0.16 + ep * 0.16;
+      f.light.intensity = 45 + ep * 35;
     }
 
     for (const s of this.sectors) {
