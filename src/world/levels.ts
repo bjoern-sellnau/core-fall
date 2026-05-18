@@ -351,7 +351,7 @@ const L5 = gen({
 const L6 = gen({
   name: "DEEP SHAFT",
   planet: "MARROW",
-  weapon: "vulcan",
+  weapon: "laser",
   company: "DEEPCORE LTD.",
   brief:
     "Plunge into the drowned lower works — a descending spiral of\ndripping conduits. It only goes down.",
@@ -377,7 +377,7 @@ const L6 = gen({
 const L7 = gen({
   name: "THE SPRAWL",
   planet: "TANTALUS",
-  weapon: "superlaser",
+  weapon: "laser",
   company: "GRID INDUSTRIES",
   brief:
     "A sprawling industrial grid that staircases sideways forever.\nLong sight-lines, relentless turret fire.",
@@ -403,7 +403,7 @@ const L7 = gen({
 const L8 = gen({
   name: "CRYO VAULT",
   planet: "NIVEN",
-  weapon: "plasma",
+  weapon: "laser",
   company: "CRYOCORP INDUSTRIES",
   brief:
     "A heaving cryo vault that pitches up and down between freezer\nbays. Stay level, stay alive.",
@@ -429,7 +429,7 @@ const L8 = gen({
 const L9 = gen({
   name: "THE GAUNTLET",
   planet: "STYX",
-  weapon: "rockets",
+  weapon: "laser",
   company: "IRONCLAD PMC",
   brief:
     "No cover, no rest — a brutally long straight run packed end to\nend with the worst they can throw at you.",
@@ -456,7 +456,7 @@ const L9 = gen({
 const L10 = gen({
   name: "CORE NEXUS",
   planet: "THE CORE",
-  weapon: "fusion",
+  weapon: "laser",
   company: "NEXUS MINING CO.",
   brief:
     "The final descent: a twisting three-dimensional nexus folding\nthrough every axis to the heart of the station.",

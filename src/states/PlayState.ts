@@ -180,8 +180,10 @@ export class PlayState implements GameState {
     for (const k of this.level.keySpawns) {
       this.pickups.add(k.pos, k.kind as PickupKind);
     }
-    // This level's new weapon, in an early room.
-    const wkind = ("w" + LEVELS[this.game.levelIndex].weapon) as PickupKind;
+    // This level's reward, in an early room: a new weapon, or a laser
+    // upgrade once you already have the full arsenal.
+    const lw = LEVELS[this.game.levelIndex].weapon;
+    const wkind = (lw === "laser" ? "laser" : "w" + lw) as PickupKind;
     const wpos = this.level.pickupSpawns.length
       ? this.level.pickupSpawns[
           Math.min(2, this.level.pickupSpawns.length - 1)
@@ -376,12 +378,27 @@ export class PlayState implements GameState {
     this.deathFx.reset();
     this.game.music.setScene("game");
 
-    const j = () => (Math.random() - 0.5) * 6;
-    const drop = (kind: PickupKind) =>
+    const j = () => (Math.random() - 0.5) * 5;
+    const drop = (kind: PickupKind) => {
+      // Offset from the death spot, but never through a wall.
+      const off = new THREE.Vector3(j(), j(), j());
+      const len = off.length() || 0.01;
+      const dir = off.clone().multiplyScalar(1 / len);
+      const hit = this.physics.world.castRay(
+        new RAPIER.Ray(this.deathPos, dir),
+        len,
+        true,
+        undefined,
+        undefined,
+        undefined,
+        this.ship.rigidBody,
+      );
+      const d = hit ? Math.max(0, hit.timeOfImpact - 1) : len;
       this.pickups.add(
-        this.deathPos.clone().add(new THREE.Vector3(j(), j(), j())),
+        this.deathPos.clone().addScaledVector(dir, d),
         kind,
       );
+    };
     for (const w of this.weapons.extraWeapons()) {
       drop(("w" + w) as PickupKind);
     }
