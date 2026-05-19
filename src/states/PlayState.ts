@@ -940,22 +940,24 @@ export class PlayState implements GameState {
       this.ship.position.set(ex.x, ex.y, sz);
       this.ship.model.position.copy(this.ship.position);
 
-      // Bright daylight spilling in from the open mouth ahead.
+      // Daylight from the mouth lighting the ship's face toward camera.
       const near = t / T_HYPER;
       this.escapeLight.color.setHex(0xdff0ff);
-      this.escapeLight.intensity = 160 + near * 520;
-      this.escapeLight.distance = 220;
-      this.escapeLight.position.set(ex.x, ex.y + 2, sz - 26);
+      this.escapeLight.intensity = 150 + near * 300;
+      this.escapeLight.distance = 160;
+      this.escapeLight.position.set(ex.x, ex.y + 2, sz - 8);
 
-      // Camera chases from just behind, on the centerline, with a
-      // collapse rumble that eases off (kept small to stay in the bore).
+      // Camera leads out ahead of the ship, flying backwards and looking
+      // back at it — the collapsing mine and its blasts fill the frame
+      // behind. Kept on the centerline so it stays in the bore.
       const shake = (1 - near) * 0.6;
+      const lead = 13 + t * 4;
       this.camera.position.set(
         ex.x + 2 + (Math.random() - 0.5) * shake,
         ex.y + 2 + (Math.random() - 0.5) * shake,
-        sz + 16 + (Math.random() - 0.5) * shake,
+        sz - lead + (Math.random() - 0.5) * shake,
       );
-      this.camera.lookAt(ex.x, ex.y, sz - 30);
+      this.camera.lookAt(ex.x, ex.y, sz + 10);
       this.level.update(dt, this.ship.position);
 
       this.deathFx.update(dt);
