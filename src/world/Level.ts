@@ -162,6 +162,7 @@ export class Level {
   readonly enemySpawns: THREE.Vector3[] = [];
   readonly factorySpawns: THREE.Vector3[] = [];
   readonly pickupSpawns: THREE.Vector3[] = [];
+  readonly secretSpawns: THREE.Vector3[] = [];
   readonly keySpawns: { pos: THREE.Vector3; kind: string }[] = [];
   readonly energyZones: { pos: THREE.Vector3; r: number }[] = [];
   readonly doorDefs: DoorDef[];
@@ -343,6 +344,9 @@ export class Level {
     for (const i of def.factoryIdx) this.factorySpawns.push(center(i));
     for (const i of def.pickupIdx) {
       this.pickupSpawns.push(center(i).add(new THREE.Vector3(0, 2, 0)));
+    }
+    for (const i of def.secretIdx) {
+      this.secretSpawns.push(center(i));
     }
     for (const k of def.keys) {
       this.keySpawns.push({

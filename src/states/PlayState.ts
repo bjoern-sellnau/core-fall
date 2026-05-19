@@ -158,7 +158,6 @@ export class PlayState implements GameState {
   private escapeLight!: THREE.PointLight;
   private winBoomTimer = 0;
   private winInit = false;
-  private readonly winStart = new THREE.Vector3();
   private starfield!: THREE.Points;
   private warp!: THREE.LineSegments;
   private deathTimer = 0;
@@ -175,6 +174,7 @@ export class PlayState implements GameState {
 
   enter(game: Game) {
     this.game = game;
+    this.game.music.setLevel(this.game.levelIndex);
 
     const { width, height } = game.size;
     this.camera.aspect = width / height;
@@ -298,6 +298,19 @@ export class PlayState implements GameState {
     if (this.game.levelIndex >= 2 && this.weapons.chronoLevel < 3) {
       this.pickups.add(slot(si), "chrono");
     }
+    // Hidden stashes behind the shootable secret doors — strong loot.
+    const stash: PickupKind[] = ["shield", "energy", "rockets", "quad"];
+    this.level.secretSpawns.forEach((p, i) => {
+      stash.forEach((k, j) => {
+        if (k === "quad" && this.weapons.hasQuad) return;
+        this.pickups.add(
+          p.clone().add(
+            new THREE.Vector3((j - 1.5) * 3, 0, (i % 2 ? 1 : -1) * 2),
+          ),
+          k,
+        );
+      });
+    });
     this.scene.add(this.pickups.group);
 
     this.deathFx = new DeathFx();
@@ -670,6 +683,18 @@ export class PlayState implements GameState {
       );
 
       this.weapons.update(sdt);
+      // Shooting a disguised hatch springs the secret stash open.
+      const bolts = this.weapons.bolts;
+      if (bolts.length) {
+        this.doors.shootOpen(
+          bolts.map((bl) => ({
+            a: bl.mesh.position
+              .clone()
+              .addScaledVector(bl.dir, -bl.speed * sdt),
+            b: bl.mesh.position,
+          })),
+        );
+      }
       this.enemies.update(sdt, this.ship.position, this.weapons);
       this.game.music.setIntensity(this.enemies.threat);
 
@@ -716,7 +741,6 @@ export class PlayState implements GameState {
           this.winTimer = 0;
           this.winBoomTimer = 0;
           this.winInit = false;
-          this.winStart.copy(this.ship.position);
           this.spaceArmed = false;
           this.root.classList.add("hidden");
           this.game.input.exitPointerLock();
@@ -906,11 +930,14 @@ export class PlayState implements GameState {
 
     // --- Phase 1: still inside the mine — fly out, mine blows behind ---
     if (t < T_HYPER) {
+      // Always run the centerline of the exit chamber / escape shaft, so
+      // it doesn't matter how (or how off-axis) you flew into the exit —
+      // the ship and the chase camera stay inside the tunnel.
+      const ex = this.level.exitZone;
       this.ship.model.visible = true;
       this.ship.model.rotation.set(0, 0, 0); // nose along -Z (outward)
-      // Accelerating burn out through the mine mouth.
-      const sz = this.winStart.z - (26 * t + 7 * t * t);
-      this.ship.position.set(this.winStart.x, this.winStart.y, sz);
+      const sz = ex.z - (26 * t + 7 * t * t);
+      this.ship.position.set(ex.x, ex.y, sz);
       this.ship.model.position.copy(this.ship.position);
 
       // Bright daylight spilling in from the open mouth ahead.
@@ -918,20 +945,17 @@ export class PlayState implements GameState {
       this.escapeLight.color.setHex(0xdff0ff);
       this.escapeLight.intensity = 160 + near * 520;
       this.escapeLight.distance = 220;
-      this.escapeLight.position.set(
-        this.winStart.x,
-        this.winStart.y + 2,
-        sz - 26,
-      );
+      this.escapeLight.position.set(ex.x, ex.y + 2, sz - 26);
 
-      // Camera chases from behind, with a collapse rumble that eases off.
-      const shake = (1 - near) * 0.9;
+      // Camera chases from just behind, on the centerline, with a
+      // collapse rumble that eases off (kept small to stay in the bore).
+      const shake = (1 - near) * 0.6;
       this.camera.position.set(
-        this.winStart.x + 4 + (Math.random() - 0.5) * shake,
-        this.winStart.y + 3 + (Math.random() - 0.5) * shake,
-        sz + 17 + (Math.random() - 0.5) * shake,
+        ex.x + 2 + (Math.random() - 0.5) * shake,
+        ex.y + 2 + (Math.random() - 0.5) * shake,
+        sz + 16 + (Math.random() - 0.5) * shake,
       );
-      this.camera.lookAt(this.winStart.x, this.winStart.y, sz - 30);
+      this.camera.lookAt(ex.x, ex.y, sz - 30);
       this.level.update(dt, this.ship.position);
 
       this.deathFx.update(dt);
@@ -941,8 +965,8 @@ export class PlayState implements GameState {
         const big = Math.random() < 0.4;
         this.deathFx.trigger(
           new THREE.Vector3(
-            this.winStart.x + (Math.random() - 0.5) * 30,
-            this.winStart.y + (Math.random() - 0.5) * 22,
+            ex.x + (Math.random() - 0.5) * 26,
+            ex.y + (Math.random() - 0.5) * 16,
             sz + 14 + Math.random() * 70,
           ),
           { laser: 0, rockets: 0 },

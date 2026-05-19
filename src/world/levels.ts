@@ -26,7 +26,8 @@ export interface LevelDef {
   doors: DoorDef[];
   factoryIdx: number[];
   pickupIdx: number[];
-  energyIdx: number[]; // room boxes that recharge weapon energy
+  energyIdx: number[]; // dedicated side rooms that recharge energy
+  secretIdx: number[]; // hidden stash rooms behind shootable doors
   keys: { idx: number; kind: string }[];
   core: [number, number, number];
   exit: [number, number, number];
@@ -89,6 +90,15 @@ const L1: LevelDef = {
     // Open escape shaft punched through the exit chamber's far wall so
     // the end-run flies out a real mouth instead of clipping geometry.
     [0, -6, -630, 16, 12, 220, 7],
+    // Dedicated energy-charge alcoves (idx 33-36), branching off the
+    // main rooms so the cores sit in their own dark side chambers.
+    [0, 13, -58, 16, 16, 16, 0],
+    [0, -19, -188, 16, 16, 16, 0],
+    [0, -10, -310, 16, 16, 16, 0],
+    [0, -23, -430, 16, 16, 16, 0],
+    // Hidden secret stash (idx 37) below room 10 — reached by shooting
+    // the disguised hatch in its floor.
+    [0, -22, -244, 16, 16, 16, 6],
   ],
   doors: [
     { pos: [0, 0, -26], size: [11, 10, 1.6], color: "normal" },
@@ -97,10 +107,13 @@ const L1: LevelDef = {
     { pos: [0, -22, -330], size: [12, 12, 1.8], color: "red" },
     { pos: [0, -8, -450], size: [12, 14, 1.6], color: "normal" },
     { pos: [0, -6, -494], size: [22, 18, 1.8], color: "exit" },
+    // Disguised hatch in room 10's floor — opens when shot.
+    { pos: [0, -18, -244], size: [18, 5, 18], color: "secret" },
   ],
   factoryIdx: [2, 6, 10, 14, 17],
   pickupIdx: [1, 3, 5, 11, 13, 15, 18, 21, 22, 23, 26, 27, 28, 30, 31],
-  energyIdx: [2, 4, 8, 10, 14, 18],
+  energyIdx: [33, 34, 35, 36],
+  secretIdx: [37],
   keys: [
     { idx: 2, kind: "keyblue" },
     { idx: 8, kind: "keyyellow" },
@@ -207,6 +220,30 @@ function gen(o: GenOpts): LevelDef {
   // through a real mine mouth instead of straight through a wall.
   place("F", 220, 16, 7);
 
+  // Dedicated energy alcoves + a couple of shootable secret stashes,
+  // each branching vertically off a room so they are their own chambers.
+  const energyIdx: number[] = [];
+  const secretIdx: number[] = [];
+  const secretDoors: DoorDef[] = [];
+  const AL = 16;
+  rooms.forEach((ri, k) => {
+    const b = boxes[ri];
+    const dy = k % 2 === 0 ? 1 : -1;
+    const offY = b[4] / 2 + AL / 2 - O;
+    if (k % 3 === 1) {
+      boxes.push([b[0], b[1] + dy * offY, b[2], AL, AL, AL, 0]);
+      energyIdx.push(boxes.length - 1);
+    } else if (k === 2 || k === rooms.length - 2) {
+      boxes.push([b[0], b[1] - dy * offY, b[2], AL, AL, AL, 6]);
+      secretIdx.push(boxes.length - 1);
+      secretDoors.push({
+        pos: [b[0], b[1] - dy * (b[4] / 2), b[2]],
+        size: [AL + 2, 5, AL + 2],
+        color: "secret",
+      });
+    }
+  });
+
   const rb = boxes[reactorIdx];
   const eb = boxes[exitIdx];
   const door1 = boxes[1];
@@ -232,10 +269,12 @@ function gen(o: GenOpts): LevelDef {
         size: [16, 14, 1.8],
         color: "exit",
       },
+      ...secretDoors,
     ],
     factoryIdx: rooms.filter((_, k) => k % 2 === 0),
     pickupIdx: rooms,
-    energyIdx: rooms.filter((_, k) => k % 2 === 1),
+    energyIdx,
+    secretIdx,
     keys: [],
     core: [rb[0], rb[1], rb[2]],
     exit: [eb[0], eb[1], eb[2]],

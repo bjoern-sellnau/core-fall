@@ -78,14 +78,28 @@ const D_B: Bar = {
   lead: [59, null, null, null, null, null, 56, null, null, null, null, null, 53, null, null, null],
 };
 
-const GAME: SceneCfg = {
-  bpm: 138,
-  bars: [G_A, G_B, G_C, G_D],
-  arr: [0, 0, 1, 0, 0, 1, 2, 2, 0, 0, 1, 0, 2, 3, 3, 1],
+// --- Per-level GAME tracks: the proven A-minor groove re-keyed,
+// re-tempo'd and re-arranged so every mission has its own song while
+// keeping the calm-to-action intensity behaviour. ---
+const transposeBar = (b: Bar, n: number): Bar => ({
+  bass: b.bass.map((x) => (x === null ? null : x + n)),
+  lead: b.lead.map((x) => (x === null ? null : x + n)),
+});
+const GAME_ARRS: number[][] = [
+  [0, 0, 1, 0, 0, 1, 2, 2, 0, 0, 1, 0, 2, 3, 3, 1],
+  [0, 1, 0, 2, 0, 1, 3, 2, 0, 1, 0, 2, 3, 1, 2, 3],
+  [0, 0, 2, 0, 1, 1, 3, 1, 0, 2, 0, 3, 2, 3, 1, 0],
+];
+const GAME_TRANSPOSE = [0, -2, 3, 5, -4, 7, 2, -5, 4, -7];
+const GAME_BPM = [138, 132, 146, 128, 150, 134, 142, 126, 148, 140];
+const GAME_TRACKS: SceneCfg[] = GAME_TRANSPOSE.map((tr, i) => ({
+  bpm: GAME_BPM[i],
+  bars: [G_A, G_B, G_C, G_D].map((b) => transposeBar(b, tr)),
+  arr: GAME_ARRS[i % GAME_ARRS.length],
   gain: 0.24,
   drums: true,
   pad: false,
-};
+}));
 const MENU_V1: SceneCfg = {
   bpm: 84,
   bars: [M_A, M_B],
@@ -135,6 +149,7 @@ export class MusicEngine {
   private intensityTarget = 0;
   private cfg: SceneCfg = MENU_V2;
   private menuVariant: 1 | 2 = 2;
+  private gameVariant = 0;
 
   private readonly lookahead = 0.1;
   private readonly tick = 25;
@@ -161,11 +176,24 @@ export class MusicEngine {
     return this.menuVariant === 2 ? MENU_V2 : MENU_V1;
   }
 
+  /** Select which per-level game song plays (0-based mission index). */
+  setLevel(i: number) {
+    const v = ((i % GAME_TRACKS.length) + GAME_TRACKS.length) %
+      GAME_TRACKS.length;
+    if (v === this.gameVariant) return;
+    this.gameVariant = v;
+    if (GAME_TRACKS.includes(this.cfg)) {
+      this.cfg = GAME_TRACKS[this.gameVariant];
+      this.step = 0;
+      this.barPos = 0;
+    }
+  }
+
   /** Switch between the menu, game, death and victory tracks. */
   setScene(scene: "menu" | "game" | "death" | "victory") {
     const next =
       scene === "game"
-        ? GAME
+        ? GAME_TRACKS[this.gameVariant]
         : scene === "death"
           ? DEATH
           : scene === "victory"

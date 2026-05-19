@@ -2,7 +2,13 @@ import * as THREE from "three";
 import { RAPIER } from "../physics/Physics";
 import type { Sfx } from "../audio/Sfx";
 
-export type DoorColor = "normal" | "blue" | "red" | "yellow" | "exit";
+export type DoorColor =
+  | "normal"
+  | "blue"
+  | "red"
+  | "yellow"
+  | "exit"
+  | "secret";
 
 export interface DoorDef {
   pos: [number, number, number];
@@ -24,7 +30,40 @@ const COLOR: Record<DoorColor, number> = {
   red: 0xff3a3a,
   yellow: 0xffd23a,
   exit: 0x33dd66,
+  // Deliberately wall-ish so a secret hatch is hard to pick out.
+  secret: 0x6a7280,
 };
+
+/** Segment (a→b) vs axis-aligned box (center c, half-extents h) test. */
+function segHitsAABB(
+  a: THREE.Vector3,
+  b: THREE.Vector3,
+  cx: number,
+  cy: number,
+  cz: number,
+  hx: number,
+  hy: number,
+  hz: number,
+): boolean {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const dz = b.z - a.z;
+  let t0 = 0;
+  let t1 = 1;
+  const slab = (p: number, d: number, lo: number, hi: number): boolean => {
+    if (Math.abs(d) < 1e-9) return p >= lo && p <= hi;
+    let n = (lo - p) / d;
+    let f = (hi - p) / d;
+    if (n > f) [n, f] = [f, n];
+    t0 = Math.max(t0, n);
+    t1 = Math.min(t1, f);
+    return t0 <= t1;
+  };
+  if (!slab(a.x, dx, cx - hx, cx + hx)) return false;
+  if (!slab(a.y, dy, cy - hy, cy + hy)) return false;
+  if (!slab(a.z, dz, cz - hz, cz + hz)) return false;
+  return true;
+}
 
 interface Door {
   def: DoorDef;
@@ -33,6 +72,8 @@ interface Door {
   baseY: number;
   t: number; // 0 closed .. 1 open
   solid: boolean; // collider currently enabled
+  secret: boolean;
+  opened: boolean; // a secret that has been shot open (latched)
 }
 
 /**
@@ -55,7 +96,8 @@ export class Doors {
         metalness: 0.6,
         roughness: 0.5,
         emissive: COLOR[def.color],
-        emissiveIntensity: def.color === "normal" ? 0.05 : 0.35,
+        emissiveIntensity:
+          def.color === "normal" || def.color === "secret" ? 0.05 : 0.35,
       });
       const mesh = new THREE.Mesh(new THREE.BoxGeometry(sx, sy, sz), mat);
       mesh.position.set(def.pos[0], def.pos[1], def.pos[2]);
@@ -82,6 +124,8 @@ export class Doors {
         baseY: def.pos[1],
         t: 0,
         solid: true,
+        secret: def.color === "secret",
+        opened: false,
       });
     }
   }
@@ -95,16 +139,23 @@ export class Doors {
 
   update(dt: number, playerPos: THREE.Vector3, keys: KeyRing) {
     for (const d of this.doors) {
-      const c = d.def.color;
-      const unlocked =
-        c === "normal" ||
-        (c === "blue" && keys.blue) ||
-        (c === "red" && keys.red) ||
-        (c === "yellow" && keys.yellow) ||
-        (c === "exit" && this.escape);
-      const near =
-        playerPos.distanceTo(d.mesh.position) < OPEN_DIST + d.def.size[1];
-      const target = unlocked && near ? 1 : 0;
+      let target: number;
+      if (d.secret) {
+        // Secret hatches ignore keys/proximity — only shooting opens
+        // them, and they stay open once triggered.
+        target = d.opened ? 1 : 0;
+      } else {
+        const c = d.def.color;
+        const unlocked =
+          c === "normal" ||
+          (c === "blue" && keys.blue) ||
+          (c === "red" && keys.red) ||
+          (c === "yellow" && keys.yellow) ||
+          (c === "exit" && this.escape);
+        const near =
+          playerPos.distanceTo(d.mesh.position) < OPEN_DIST + d.def.size[1];
+        target = unlocked && near ? 1 : 0;
+      }
 
       d.t +=
         Math.sign(target - d.t) *
@@ -119,6 +170,35 @@ export class Doors {
         d.collider.setEnabled(solid);
         if (playerPos.distanceTo(d.mesh.position) < 60) {
           this.sfx.door(!solid);
+        }
+      }
+    }
+  }
+
+  /**
+   * Feed the live weapon-bolt segments; any closed secret hatch a shot
+   * passes through latches open.
+   */
+  shootOpen(segs: { a: THREE.Vector3; b: THREE.Vector3 }[]) {
+    for (const d of this.doors) {
+      if (!d.secret || d.opened) continue;
+      const p = d.def.pos;
+      const s = d.def.size;
+      for (const seg of segs) {
+        if (
+          segHitsAABB(
+            seg.a,
+            seg.b,
+            p[0],
+            p[1],
+            p[2],
+            s[0] / 2 + 0.6,
+            s[1] / 2 + 0.6,
+            s[2] / 2 + 0.6,
+          )
+        ) {
+          d.opened = true;
+          break;
         }
       }
     }
