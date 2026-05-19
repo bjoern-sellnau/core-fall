@@ -47,7 +47,66 @@ export type Kind =
   | "tank"
   | "spinner"
   | "sniper"
-  | "bomber";
+  | "bomber"
+  // Advanced rigs — appear from mission 7 on.
+  | "spreader"
+  | "twincannon"
+  | "quadcannon"
+  | "dualplasma"
+  | "arcer"
+  | "burster"
+  | "railer"
+  | "swarmer"
+  | "mortar"
+  | "warden";
+
+/** Advanced hostile roster mixed in from mission 7 onward. */
+export const NEW_ENEMY_KINDS: Kind[] = [
+  "spreader",
+  "twincannon",
+  "quadcannon",
+  "dualplasma",
+  "arcer",
+  "burster",
+  "railer",
+  "swarmer",
+  "mortar",
+  "warden",
+];
+
+interface ESpec {
+  hp: number; // bonus HP over the difficulty base
+  shots: number; // ebolts per volley
+  spread: number; // radians between shots
+  range: number;
+  cool: number; // base seconds between volleys
+  melee?: boolean;
+  vert?: boolean; // fan vertically instead of horizontally
+}
+const ESPEC: Record<string, ESpec> = {
+  spreader: { hp: 1, shots: 3, spread: 0.17, range: 95, cool: 1.6 },
+  twincannon: { hp: 2, shots: 5, spread: 0.14, range: 98, cool: 1.9 },
+  quadcannon: { hp: 2, shots: 4, spread: 0.07, range: 104, cool: 1.5 },
+  dualplasma: { hp: 3, shots: 2, spread: 0.05, range: 96, cool: 1.3 },
+  arcer: { hp: 1, shots: 4, spread: 0.19, range: 88, cool: 1.7, vert: true },
+  burster: { hp: 1, shots: 3, spread: 0.04, range: 92, cool: 1.0 },
+  railer: { hp: 2, shots: 1, spread: 0, range: 175, cool: 2.5 },
+  swarmer: { hp: 0, shots: 0, spread: 0, range: 0, cool: 0, melee: true },
+  mortar: { hp: 2, shots: 2, spread: 0.24, range: 115, cool: 1.9 },
+  warden: { hp: 5, shots: 4, spread: 0.1, range: 96, cool: 1.5 },
+};
+const ECOLOR: Record<string, { body: number; emissive: number }> = {
+  spreader: { body: 0x402a1c, emissive: 0xffae3a },
+  twincannon: { body: 0x3a2410, emissive: 0xff8a1a },
+  quadcannon: { body: 0x103a3a, emissive: 0x33ffe0 },
+  dualplasma: { body: 0x163a1c, emissive: 0x5cff7a },
+  arcer: { body: 0x2a2440, emissive: 0x8a5cff },
+  burster: { body: 0x3a1430, emissive: 0xff5ce0 },
+  railer: { body: 0x102a40, emissive: 0x4ad0ff },
+  swarmer: { body: 0x401818, emissive: 0xff4040 },
+  mortar: { body: 0x3a3414, emissive: 0xe8d24a },
+  warden: { body: 0x40202a, emissive: 0xff5a7a },
+};
 
 interface Drone {
   mesh: THREE.Mesh;
@@ -208,8 +267,10 @@ export class EnemySwarm {
   private readonly tmp = new THREE.Vector3();
   private readonly losDir = new THREE.Vector3();
   private readonly desired = new THREE.Vector3();
+  private readonly UP = new THREE.Vector3(0, 1, 0);
 
   private playerPos = new THREE.Vector3();
+  private readonly extraMats: Record<string, THREE.MeshStandardMaterial> = {};
 
   constructor(
     private readonly world: RAPIER.World,
@@ -217,7 +278,17 @@ export class EnemySwarm {
     private readonly cfg: DiffConfig,
     private readonly tier = 1,
     private readonly roster: Kind[] = ["dasher", "shooter"],
-  ) {}
+  ) {
+    for (const k of Object.keys(ECOLOR)) {
+      this.extraMats[k] = new THREE.MeshStandardMaterial({
+        color: ECOLOR[k].body,
+        emissive: ECOLOR[k].emissive,
+        emissiveIntensity: 1.15,
+        metalness: 0.6,
+        roughness: 0.4,
+      });
+    }
+  }
 
   private kindFor(i: number): Kind {
     return this.roster[i % this.roster.length];
@@ -287,7 +358,7 @@ export class EnemySwarm {
   private makeDrone(p: THREE.Vector3) {
     const kind = this.kindFor(this.spawnCount);
     this.spawnCount++;
-    const geoBy: Record<Kind, THREE.BufferGeometry> = {
+    const baseGeo: Record<string, THREE.BufferGeometry> = {
       dasher: this.geoD,
       shooter: this.geoS,
       interceptor: this.geoI,
@@ -295,8 +366,18 @@ export class EnemySwarm {
       spinner: this.geoSp,
       sniper: this.geoSn,
       bomber: this.geoB,
+      spreader: this.geoS,
+      twincannon: this.geoS,
+      quadcannon: this.geoT,
+      dualplasma: this.geoT,
+      arcer: this.geoSn,
+      burster: this.geoSn,
+      railer: this.geoSn,
+      swarmer: this.geoI,
+      mortar: this.geoB,
+      warden: this.geoT,
     };
-    const matBy: Record<Kind, THREE.Material> = {
+    const baseMat: Record<string, THREE.Material> = {
       dasher: this.matD,
       shooter: this.matS,
       interceptor: this.matI,
@@ -305,11 +386,18 @@ export class EnemySwarm {
       sniper: this.matSn,
       bomber: this.matB,
     };
-    const mesh = new THREE.Mesh(geoBy[kind], matBy[kind]);
+    const mesh = new THREE.Mesh(
+      baseGeo[kind],
+      baseMat[kind] ?? this.extraMats[kind],
+    );
     mesh.position.copy(p);
     this.group.add(mesh);
-    const hp =
-      kind === "tank"
+    const spec = ESPEC[kind];
+    const hp = spec
+      ? spec.melee
+        ? 1
+        : this.cfg.droneHp + spec.hp + this.tier
+      : kind === "tank"
         ? this.cfg.droneHp * 3 + this.tier
         : kind === "bomber"
           ? this.cfg.droneHp * 4 + this.tier
@@ -409,30 +497,41 @@ export class EnemySwarm {
       }
 
       dr.cool -= dt;
+      const spec = ESPEC[dr.kind];
       const melee =
         dr.kind === "dasher" ||
         dr.kind === "interceptor" ||
-        dr.kind === "spinner";
+        dr.kind === "spinner" ||
+        spec?.melee === true;
       if (melee) {
         this.updateDasher(dr, dt, dist, playerPos, damp);
       } else {
         this.updateShooter(dr, dt, dist, damp);
-        const range = dr.kind === "sniper" ? SHOOT_RANGE * 1.5 : SHOOT_RANGE;
+        const range = spec
+          ? spec.range
+          : dr.kind === "sniper"
+            ? SHOOT_RANGE * 1.5
+            : SHOOT_RANGE;
         if (
           dr.cool <= 0 &&
           dist < range &&
           !this.blocked(dr.mesh.position, playerPos)
         ) {
-          this.fireEnemyBolt(dr, playerPos);
-          if (dr.kind === "tank" || dr.kind === "bomber")
+          if (spec) {
+            this.volley(dr, playerPos, spec.shots, spec.spread, spec.vert);
+            dr.cool = spec.cool + Math.random() * 1.2;
+          } else {
             this.fireEnemyBolt(dr, playerPos);
-          dr.cool =
-            (dr.kind === "tank" || dr.kind === "bomber"
-              ? 1.0
-              : dr.kind === "sniper"
-                ? 2.2
-                : 1.4) +
-            Math.random() * 1.6;
+            if (dr.kind === "tank" || dr.kind === "bomber")
+              this.fireEnemyBolt(dr, playerPos);
+            dr.cool =
+              (dr.kind === "tank" || dr.kind === "bomber"
+                ? 1.0
+                : dr.kind === "sniper"
+                  ? 2.2
+                  : 1.4) +
+              Math.random() * 1.6;
+          }
           threat += 0.4;
         }
       }
@@ -530,15 +629,39 @@ export class EnemySwarm {
   }
 
   private spawnEBolt(from: THREE.Vector3, playerPos: THREE.Vector3) {
+    this.losDir.subVectors(playerPos, from).normalize();
+    this.spawnEBoltDir(from, this.losDir);
+  }
+
+  private spawnEBoltDir(from: THREE.Vector3, dir: THREE.Vector3) {
     const mesh = new THREE.Mesh(this.eboltGeo, this.eboltMat);
     mesh.position.copy(from);
-    const vel = new THREE.Vector3()
-      .subVectors(playerPos, from)
-      .normalize()
-      .multiplyScalar(EBOLT_SPEED);
+    const vel = dir.clone().normalize().multiplyScalar(EBOLT_SPEED);
     this.group.add(mesh);
     this.ebolts.push({ mesh, vel, life: EBOLT_LIFE });
     this.sfx.enemyShot();
+  }
+
+  /** Fan `n` bolts at the player, `spread` rad apart, h- or v-axis. */
+  private volley(
+    dr: Drone,
+    playerPos: THREE.Vector3,
+    n: number,
+    spread: number,
+    vert?: boolean,
+  ) {
+    const base = new THREE.Vector3()
+      .subVectors(playerPos, dr.mesh.position)
+      .normalize();
+    const axis = vert
+      ? new THREE.Vector3().crossVectors(base, this.UP).normalize()
+      : this.UP;
+    const start = -((n - 1) / 2);
+    for (let i = 0; i < n; i++) {
+      const a = (start + i) * spread;
+      const d = base.clone().applyAxisAngle(axis, a);
+      this.spawnEBoltDir(dr.mesh.position, d);
+    }
   }
 
   private updateEBolts(dt: number, playerPos: THREE.Vector3) {
@@ -713,6 +836,7 @@ export class EnemySwarm {
     this.matSn.dispose();
     this.matB.dispose();
     this.matF.dispose();
+    for (const k of Object.keys(this.extraMats)) this.extraMats[k].dispose();
     this.eboltGeo.dispose();
     this.eboltMat.dispose();
     this.boomGeo.dispose();

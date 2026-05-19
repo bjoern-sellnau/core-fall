@@ -31,6 +31,7 @@ export interface LevelDef {
   keys: { idx: number; kind: string }[];
   core: [number, number, number];
   exit: [number, number, number];
+  exitDir: [number, number, number]; // outward escape-flight direction
   spawn: [number, number, number];
   wall: number;
   wallEmissive: number;
@@ -99,6 +100,10 @@ const L1: LevelDef = {
     // Hidden secret stash (idx 37) below room 10 — reached by shooting
     // the disguised hatch in its floor.
     [0, -22, -244, 16, 16, 16, 6],
+    // Emergency exit chamber + escape shaft, back at the start (idx 38-39):
+    // sealed until the reactor blows, then you race all the way back.
+    [0, 0, 17, 18, 14, 30, 10],
+    [0, 0, 138, 16, 16, 220, 7],
   ],
   doors: [
     { pos: [0, 0, -26], size: [11, 10, 1.6], color: "normal" },
@@ -106,7 +111,10 @@ const L1: LevelDef = {
     { pos: [0, -6, -210], size: [11, 11, 1.6], color: "yellow" },
     { pos: [0, -22, -330], size: [12, 12, 1.8], color: "red" },
     { pos: [0, -8, -450], size: [12, 14, 1.6], color: "normal" },
-    { pos: [0, -6, -494], size: [22, 18, 1.8], color: "exit" },
+    // Old reactor-front door is now just a normal door.
+    { pos: [0, -6, -494], size: [22, 18, 1.8], color: "normal" },
+    // The real emergency exit, sealed behind the spawn.
+    { pos: [0, 0, 6], size: [20, 14, 1.8], color: "exit" },
     // Disguised hatch in room 10's floor — opens when shot.
     { pos: [0, -18, -244], size: [18, 5, 18], color: "secret" },
   ],
@@ -120,7 +128,8 @@ const L1: LevelDef = {
     { idx: 12, kind: "keyred" },
   ],
   core: [0, -6, -470],
-  exit: [0, -6, -508],
+  exit: [0, 0, 17],
+  exitDir: [0, 0, 1],
   spawn: [0, 0, 2],
   wall: 0x36475a,
   wallEmissive: 0x16242f,
@@ -220,14 +229,25 @@ function gen(raw: GenOpts): LevelDef {
     rooms.push(place(dir, o.roomLen, o.roomCross, n % 3 === 2 ? 0 : 11));
     n++;
   }
-  // Finale always runs forward into the reactor + exit chamber.
+  // Finale: a long run forward into the buried reactor (a dead end you
+  // must blow, then race all the way back out).
   place("F", o.corrLen, o.corrCross, 6);
   const rCross = Math.max(o.roomCross + 10, 30);
   const reactorIdx = place("F", 40, rCross, 0, true);
-  const exitIdx = place("F", 30, 18, 10);
-  // Open escape shaft beyond the exit so the win cinematic flies out
-  // through a real mine mouth instead of straight through a wall.
-  place("F", 220, 16, 7);
+
+  // The emergency exit is back at the START — sealed until the reactor
+  // dies. An escape shaft opens out the +Z mouth behind the spawn.
+  const b0 = boxes[0];
+  const startFace = b0[2] + b0[5] / 2;
+  const exC = startFace + 15 - O;
+  boxes.push([b0[0], b0[1], exC, 18, 14, 30, 10]);
+  const exitIdx = boxes.length - 1;
+  boxes.push([b0[0], b0[1], exC + 15 + 110 - O, 16, 16, 220, 7]);
+  const exitDoor: DoorDef = {
+    pos: [b0[0], b0[1], startFace],
+    size: [20, 14, 1.8],
+    color: "exit",
+  };
 
   // Dedicated energy alcoves + a couple of shootable secret stashes,
   // each branching vertically off a room so they are their own chambers.
@@ -273,11 +293,7 @@ function gen(raw: GenOpts): LevelDef {
         size: [o.corrCross + 2, o.corrCross, 1.6],
         color: "normal",
       },
-      {
-        pos: [rb[0], rb[1], rb[2] - rb[5] / 2],
-        size: [16, 14, 1.8],
-        color: "exit",
-      },
+      exitDoor,
       ...secretDoors,
     ],
     factoryIdx: rooms.filter((_, k) => k % 2 === 0),
@@ -287,6 +303,7 @@ function gen(raw: GenOpts): LevelDef {
     keys: [],
     core: [rb[0], rb[1], rb[2]],
     exit: [eb[0], eb[1], eb[2]],
+    exitDir: [0, 0, 1],
     spawn: [0, 0, 3],
     wall: o.wall,
     wallEmissive: o.wallEmissive,
@@ -853,6 +870,16 @@ export const ROBOT_LABEL: Record<Kind, string> = {
   spinner: "WHIRL",
   sniper: "LANCE",
   bomber: "DETONATOR",
+  spreader: "SCATTER",
+  twincannon: "TWIN MAW",
+  quadcannon: "QUAD RIG",
+  dualplasma: "TWIN PLASMA",
+  arcer: "ARC LANCE",
+  burster: "STUTTER",
+  railer: "RAILGUN",
+  swarmer: "SHRIKE",
+  mortar: "LOBBER",
+  warden: "WARDEN",
 };
 
 export const LEVELS: LevelDef[] = [

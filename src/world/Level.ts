@@ -156,6 +156,7 @@ export class Level {
   readonly spawnQuaternion: THREE.Quaternion;
   readonly corePosition: THREE.Vector3;
   readonly exitZone: THREE.Vector3;
+  readonly exitDir: THREE.Vector3;
   readonly fogDensity: number;
   readonly fogColor: number;
   readonly mapBoxes: { x0: number; z0: number; x1: number; z1: number }[] = [];
@@ -197,6 +198,11 @@ export class Level {
     const core = new THREE.Vector3(def.core[0], def.core[1], def.core[2]);
     this.corePosition = core.clone();
     this.exitZone = new THREE.Vector3(def.exit[0], def.exit[1], def.exit[2]);
+    this.exitDir = new THREE.Vector3(
+      def.exitDir[0],
+      def.exitDir[1],
+      def.exitDir[2],
+    ).normalize();
 
     const boxes: Box[] = def.boxes.map((b) =>
       box(b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7] ?? false),

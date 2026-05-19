@@ -14,7 +14,11 @@ import {
   SECONDARY,
   type Weapon,
 } from "../world/Weapons";
-import { EnemySwarm, difficultyConfig } from "../world/Enemies";
+import {
+  EnemySwarm,
+  difficultyConfig,
+  NEW_ENEMY_KINDS,
+} from "../world/Enemies";
 import { LEVELS } from "../world/levels";
 import { PickupField, type PickupKind } from "../world/Pickups";
 import { DeathFx } from "../world/DeathFx";
@@ -216,12 +220,17 @@ export class PlayState implements GameState {
     );
     this.scene.add(this.weapons.group);
 
+    // From mission 7 on, fold the advanced rigs into the roster.
+    const roster =
+      this.game.levelIndex >= 6
+        ? [...LEVELS[this.game.levelIndex].kinds, ...NEW_ENEMY_KINDS]
+        : LEVELS[this.game.levelIndex].kinds;
     this.enemies = new EnemySwarm(
       this.physics.world,
       this.game.sfx,
       difficultyConfig(this.game.difficulty),
       LEVELS[this.game.levelIndex].tier,
-      LEVELS[this.game.levelIndex].kinds,
+      roster,
     );
     this.enemies.spawn(
       this.level.enemySpawns,
@@ -724,7 +733,10 @@ export class PlayState implements GameState {
       }
       if (this.enemies.consumeReactorKilled()) {
         this.selfDestruct = true;
-        this.escapeTime = 55;
+        // The exit is back at the start now, so scale the escape clock
+        // to how far the reactor sits from it.
+        const d = this.level.corePosition.distanceTo(this.level.exitZone);
+        this.escapeTime = Math.max(75, Math.min(320, d / 14 + 45));
         this.level.destroyReactor();
         this.doors.setEscape(true);
         this.game.sfx.explosion(3);
@@ -935,70 +947,85 @@ export class PlayState implements GameState {
       // it doesn't matter how (or how off-axis) you flew into the exit —
       // the ship and the chase camera stay inside the tunnel.
       const ex = this.level.exitZone;
+      const dir = this.level.exitDir;
+      const up = new THREE.Vector3(0, 1, 0);
+      const side = new THREE.Vector3()
+        .crossVectors(dir, up)
+        .normalize();
+      const f = 26 * t + 7 * t * t;
+      const sp = ex.clone().addScaledVector(dir, f);
+
       this.ship.model.visible = true;
-      this.ship.model.rotation.set(0, 0, 0); // nose along -Z (outward)
-      const sz = ex.z - (26 * t + 7 * t * t);
-      this.ship.position.set(ex.x, ex.y, sz);
-      this.ship.model.position.copy(this.ship.position);
+      this.ship.model.rotation.set(0, dir.z >= 0 ? Math.PI : 0, 0);
+      this.ship.position.copy(sp);
+      this.ship.model.position.copy(sp);
 
       // Daylight from the mouth lighting the ship's face toward camera.
       const near = t / T_HYPER;
       this.escapeLight.color.setHex(0xdff0ff);
       this.escapeLight.intensity = 150 + near * 300;
       this.escapeLight.distance = 160;
-      this.escapeLight.position.set(ex.x, ex.y + 2, sz - 8);
+      this.escapeLight.position
+        .copy(sp)
+        .addScaledVector(dir, 8)
+        .addScaledVector(up, 2);
 
-      // Camera leads out ahead of the ship, flying backwards and looking
-      // back at it — the collapsing mine and its blasts fill the frame
-      // behind. Kept on the centerline so it stays in the bore.
+      // Camera leads out ahead along the escape axis, flying backwards
+      // and looking back at the ship + collapsing level behind it.
       const shake = (1 - near) * 0.6;
       const lead = 13 + t * 4;
-      this.camera.position.set(
-        ex.x + 2 + (Math.random() - 0.5) * shake,
-        ex.y + 2 + (Math.random() - 0.5) * shake,
-        sz - lead + (Math.random() - 0.5) * shake,
-      );
-      this.camera.lookAt(ex.x, ex.y, sz + 10);
+      this.camera.position
+        .copy(sp)
+        .addScaledVector(dir, lead)
+        .addScaledVector(side, 2)
+        .addScaledVector(up, 2)
+        .addScaledVector(side, (Math.random() - 0.5) * shake)
+        .addScaledVector(up, (Math.random() - 0.5) * shake);
+      this.camera.lookAt(sp.clone().addScaledVector(dir, -10));
       this.level.update(dt, this.ship.position);
+
+      const boom = (sprX: number, sprY: number, behind: number) =>
+        sp
+          .clone()
+          .addScaledVector(dir, -behind)
+          .addScaledVector(side, (Math.random() - 0.5) * sprX)
+          .addScaledVector(up, (Math.random() - 0.5) * sprY);
 
       this.deathFx.update(dt);
       const toHyper = T_HYPER - t;
       this.winBoomTimer -= dt;
       if (toHyper < 0.85) {
-        // The whole mine lets go: a roaring chain detonation across the
-        // entire bore right before we punch into hyperspace.
+        // The whole level lets go: a roaring chain detonation behind us
+        // right before we punch into hyperspace.
         const fk = 1 - toHyper / 0.85;
         if (this.winBoomTimer <= 0) {
           this.winBoomTimer = 0.03;
           for (let i = 0; i < 3; i++) {
-            this.deathFx.trigger(
-              new THREE.Vector3(
-                ex.x + (Math.random() - 0.5) * 70,
-                ex.y + (Math.random() - 0.5) * 46,
-                sz + 4 + Math.random() * 150,
-              ),
-              { laser: 0, rockets: 0 },
-            );
+            this.deathFx.trigger(boom(70, 46, 4 + Math.random() * 150), {
+              laser: 0,
+              rockets: 0,
+            });
           }
           this.game.sfx.explosion(3.6);
         }
-        // Hard collapse shake + a fireball whiteout that carries the cut.
-        this.camera.position.x += (Math.random() - 0.5) * fk * 3;
-        this.camera.position.y += (Math.random() - 0.5) * fk * 3;
+        this.camera.position.addScaledVector(
+          side,
+          (Math.random() - 0.5) * fk * 3,
+        );
+        this.camera.position.addScaledVector(
+          up,
+          (Math.random() - 0.5) * fk * 3,
+        );
         this.winFade.style.background = "#ffe6bf";
         this.winFade.style.opacity = `${Math.min(1, 0.15 + fk * 1.1)}`;
       } else {
         if (this.winBoomTimer <= 0) {
           this.winBoomTimer = 0.1 + Math.random() * 0.08;
           const big = Math.random() < 0.4;
-          this.deathFx.trigger(
-            new THREE.Vector3(
-              ex.x + (Math.random() - 0.5) * 26,
-              ex.y + (Math.random() - 0.5) * 16,
-              sz + 14 + Math.random() * 70,
-            ),
-            { laser: 0, rockets: 0 },
-          );
+          this.deathFx.trigger(boom(26, 16, 14 + Math.random() * 70), {
+            laser: 0,
+            rockets: 0,
+          });
           this.game.sfx.explosion(big ? 3.2 : 2.2);
         }
         this.winFade.style.opacity = "0";
