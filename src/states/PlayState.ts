@@ -91,6 +91,9 @@ const SUPPLY_CYCLE: PickupKind[] = [
 const MAX_HULL = 100;
 const MAX_SHIELD = 100;
 const UP_SHIELD = 200; // with the shield-capacity plug-in (mission 5+)
+// Win point sits inside the escape shaft, past the exit door, so it
+// isn't triggered just by spawning near the (now start-side) exit.
+const WIN_DEPTH = 16;
 const SHIELD_REGEN = 14; // per s
 const SHIELD_DELAY = 4; // s after a hit before shield regenerates
 const HEALTH_PICKUP = 35;
@@ -152,6 +155,7 @@ export class PlayState implements GameState {
 
   private phase: "play" | "dead" | "gameover" | "won" = "play";
   private selfDestruct = false;
+  private reactorDown = false;
   private spawned = false;
   private escapeTime = 0;
   private winTimer = 0;
@@ -176,6 +180,7 @@ export class PlayState implements GameState {
 
   private readonly tmpFwd = new THREE.Vector3();
   private readonly tmpRight = new THREE.Vector3();
+  private readonly winPoint = new THREE.Vector3();
 
   enter(game: Game) {
     this.game = game;
@@ -484,6 +489,16 @@ export class PlayState implements GameState {
     game.renderer.domElement.addEventListener("click", this.onClick);
   }
 
+  /** Arm (or re-arm) the self-destruct escape run. */
+  private armEscape() {
+    this.selfDestruct = true;
+    const d = this.level.corePosition.distanceTo(this.level.exitZone);
+    this.escapeTime = Math.max(75, Math.min(320, d / 14 + 45));
+    this.doors.setEscape(true);
+    this.reactorWrapEl.classList.add("hidden");
+    this.sdEl.classList.remove("hidden");
+  }
+
   private die() {
     this.lives -= 1;
     this.game.sfx.explosion(2.4);
@@ -550,6 +565,9 @@ export class PlayState implements GameState {
     this.hull = MAX_HULL;
     this.shield = this.shieldMax;
     this.phase = "play";
+    // If the reactor was already blown, the escape is still on — re-arm
+    // a fresh timer so a death mid-run doesn't soft-lock the mission.
+    if (this.reactorDown) this.armEscape();
     this.deathEl.classList.add("hidden");
     this.root.classList.remove("hidden");
   }
@@ -732,22 +750,19 @@ export class PlayState implements GameState {
         this.reactorEl.style.width = `${(this.enemies.reactorHp01 * 100).toFixed(0)}%`;
       }
       if (this.enemies.consumeReactorKilled()) {
-        this.selfDestruct = true;
-        // The exit is back at the start now, so scale the escape clock
-        // to how far the reactor sits from it.
-        const d = this.level.corePosition.distanceTo(this.level.exitZone);
-        this.escapeTime = Math.max(75, Math.min(320, d / 14 + 45));
+        this.reactorDown = true;
         this.level.destroyReactor();
-        this.doors.setEscape(true);
         this.game.sfx.explosion(3);
-        this.reactorWrapEl.classList.add("hidden");
-        this.sdEl.classList.remove("hidden");
+        this.armEscape();
       }
       if (this.selfDestruct) {
         this.escapeTime -= dt;
         const t = Math.max(0, this.escapeTime);
         this.sdEl.textContent = `!! SELF DESTRUCT !!  T-${t.toFixed(0)}s  —  REACH THE EXIT`;
-        if (this.ship.position.distanceTo(this.level.exitZone) < 22) {
+        this.winPoint
+          .copy(this.level.exitZone)
+          .addScaledVector(this.level.exitDir, WIN_DEPTH);
+        if (this.ship.position.distanceTo(this.winPoint) < 22) {
           this.selfDestruct = false;
           this.sdEl.classList.add("hidden");
           this.phase = "won";
