@@ -38,6 +38,53 @@ const G_D: Bar = {
   lead: [81, 84, 88, 84, 81, 84, 88, 91, 79, 83, 86, 83, 76, 79, 83, 88],
 };
 
+// --- Extra motif palettes so every mission has a distinct song ---
+// DOOM: slow, heavy, Phrygian dread.
+const DM_A: Bar = {
+  bass: [29, null, null, 29, null, null, 30, null, 29, null, null, null, 34, null, 29, null],
+  lead: [65, null, null, null, 64, null, null, null, 65, null, 68, null, null, null, 63, null],
+};
+const DM_B: Bar = {
+  bass: [29, 29, null, 36, null, 34, null, 30, 29, 29, null, 36, 41, null, 34, null],
+  lead: [72, null, 71, null, 68, null, 65, null, 70, null, 68, null, 64, null, 63, null],
+};
+// HERO: bright, anthemic major.
+const HR_A: Bar = {
+  bass: [40, null, 40, 47, null, 45, 43, null, 38, null, 38, 45, null, 43, 40, null],
+  lead: [76, 79, 83, 79, 81, 84, 88, 84, 74, 78, 81, 78, 76, 79, 83, 86],
+};
+const HR_B: Bar = {
+  bass: [45, 45, 43, 43, 40, 40, 38, 38, 47, 47, 45, 45, 43, 43, 40, 47],
+  lead: [83, 86, 90, 86, 88, 91, 95, 91, 81, 84, 88, 84, 79, 83, 86, 90],
+};
+// RUSH: fast, relentless 16th arpeggios.
+const RU_A: Bar = {
+  bass: [45, 45, 45, 45, 43, 43, 43, 43, 48, 48, 48, 48, 46, 46, 44, 43],
+  lead: [81, 84, 88, 93, 88, 84, 81, 84, 79, 83, 86, 91, 86, 83, 79, 83],
+};
+const RU_B: Bar = {
+  bass: [50, 50, 48, 48, 46, 46, 45, 45, 43, 43, 45, 45, 48, 48, 50, 53],
+  lead: [88, 91, 95, 100, 95, 91, 88, 91, 86, 90, 93, 98, 93, 90, 86, 90],
+};
+// NEON: syncopated electro city groove.
+const NE_A: Bar = {
+  bass: [38, null, 38, 38, null, 45, null, 38, 41, null, 41, null, 43, null, 45, null],
+  lead: [78, null, 81, null, 78, null, 73, 76, 78, null, 83, null, 81, null, 76, null],
+};
+const NE_B: Bar = {
+  bass: [43, null, 43, 50, null, 43, 48, null, 41, null, 41, 48, null, 41, 46, null],
+  lead: [85, null, 83, 81, null, 78, 81, null, 88, null, 85, 83, null, 81, 78, null],
+};
+// STORM: aggressive chromatic tension.
+const ST_A: Bar = {
+  bass: [35, 35, 36, 35, 41, null, 40, 35, 35, 35, 36, 35, 42, 41, 40, 35],
+  lead: [80, null, 79, 80, 83, null, 80, 79, 75, null, 76, 75, 80, null, 79, 83],
+};
+const ST_B: Bar = {
+  bass: [35, 38, 35, 41, 36, 42, 40, 35, 35, 38, 35, 41, 43, 42, 40, 38],
+  lead: [83, 84, 83, 87, 80, 79, 80, 83, 88, 87, 83, 80, 79, 80, 83, 88],
+};
+
 // --- MENU: slow, sparse, atmospheric ---
 const M_A: Bar = {
   bass: [28, null, null, null, null, null, null, null, 33, null, null, null, null, null, null, null],
@@ -78,24 +125,51 @@ const D_B: Bar = {
   lead: [59, null, null, null, null, null, 56, null, null, null, null, null, 53, null, null, null],
 };
 
-// --- Per-level GAME tracks: the proven A-minor groove re-keyed,
-// re-tempo'd and re-arranged so every mission has its own song while
-// keeping the calm-to-action intensity behaviour. ---
+// --- Per-level GAME tracks: distinct motif + key + tempo + groove per
+// mission. Missions 1-10 are the dark mine; 11-20 the Earth act. ---
 const transposeBar = (b: Bar, n: number): Bar => ({
   bass: b.bass.map((x) => (x === null ? null : x + n)),
   lead: b.lead.map((x) => (x === null ? null : x + n)),
 });
 const GAME_ARRS: number[][] = [
-  [0, 0, 1, 0, 0, 1, 2, 2, 0, 0, 1, 0, 2, 3, 3, 1],
-  [0, 1, 0, 2, 0, 1, 3, 2, 0, 1, 0, 2, 3, 1, 2, 3],
-  [0, 0, 2, 0, 1, 1, 3, 1, 0, 2, 0, 3, 2, 3, 1, 0],
+  [0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 0, 0, 1, 1],
+  [0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 1, 0, 1, 1],
+  [0, 0, 0, 1, 0, 1, 1, 1, 0, 0, 1, 0, 1, 1, 0, 1],
 ];
-const GAME_TRANSPOSE = [0, -2, 3, 5, -4, 7, 2, -5, 4, -7];
-const GAME_BPM = [138, 132, 146, 128, 150, 134, 142, 126, 148, 140];
-const GAME_TRACKS: SceneCfg[] = GAME_TRANSPOSE.map((tr, i) => ({
-  bpm: GAME_BPM[i],
-  bars: [G_A, G_B, G_C, G_D].map((b) => transposeBar(b, tr)),
-  arr: GAME_ARRS[i % GAME_ARRS.length],
+const MINE_4 = [G_A, G_B, G_C, G_D];
+interface TrackSpec {
+  m: Bar[]; // motif bars
+  bpm: number;
+  tr: number; // transpose (semitones)
+  a: number; // GAME_ARRS index
+}
+// 20 missions, each a different feel. Adjacent levels never share a motif.
+const TRACK_SPECS: TrackSpec[] = [
+  { m: MINE_4, bpm: 138, tr: 0, a: 0 }, // 1 The Mine
+  { m: [ST_A, ST_B], bpm: 132, tr: -2, a: 1 }, // 2
+  { m: [DM_A, DM_B], bpm: 96, tr: 0, a: 2 }, // 3
+  { m: MINE_4, bpm: 146, tr: 5, a: 1 }, // 4
+  { m: [ST_A, ST_B], bpm: 150, tr: 3, a: 0 }, // 5
+  { m: [DM_A, DM_B], bpm: 104, tr: -4, a: 1 }, // 6
+  { m: MINE_4, bpm: 142, tr: 7, a: 2 }, // 7
+  { m: [ST_A, ST_B], bpm: 156, tr: -5, a: 1 }, // 8
+  { m: [DM_A, DM_B], bpm: 100, tr: 2, a: 0 }, // 9
+  { m: MINE_4, bpm: 152, tr: -7, a: 2 }, // 10
+  { m: [HR_A, HR_B], bpm: 128, tr: 0, a: 0 }, // 11 Earth act
+  { m: [NE_A, NE_B], bpm: 122, tr: 0, a: 1 }, // 12
+  { m: [RU_A, RU_B], bpm: 160, tr: 0, a: 2 }, // 13
+  { m: [HR_A, HR_B], bpm: 134, tr: 5, a: 1 }, // 14
+  { m: [NE_A, NE_B], bpm: 126, tr: -3, a: 0 }, // 15
+  { m: [RU_A, RU_B], bpm: 168, tr: 3, a: 1 }, // 16
+  { m: [HR_A, HR_B], bpm: 140, tr: -2, a: 2 }, // 17
+  { m: [NE_A, NE_B], bpm: 130, tr: 7, a: 1 }, // 18
+  { m: [RU_A, RU_B], bpm: 172, tr: -5, a: 0 }, // 19
+  { m: [HR_A, HR_B], bpm: 148, tr: 4, a: 2 }, // 20 Earth Core
+];
+const GAME_TRACKS: SceneCfg[] = TRACK_SPECS.map((s) => ({
+  bpm: s.bpm,
+  bars: s.m.map((b) => transposeBar(b, s.tr)),
+  arr: GAME_ARRS[s.a],
   gain: 0.24,
   drums: true,
   pad: false,

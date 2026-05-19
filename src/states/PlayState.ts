@@ -3,6 +3,7 @@ import type { Game } from "../engine/Game";
 import type { GameState } from "./GameState";
 import { MenuState } from "./MenuState";
 import { BriefingState } from "./BriefingState";
+import { ActState } from "./ActState";
 import { LeaderboardState } from "./LeaderboardState";
 import { PhysicsWorld, RAPIER } from "../physics/Physics";
 import { Level } from "../world/Level";
@@ -961,23 +962,47 @@ export class PlayState implements GameState {
       this.level.update(dt, this.ship.position);
 
       this.deathFx.update(dt);
+      const toHyper = T_HYPER - t;
       this.winBoomTimer -= dt;
-      if (this.winBoomTimer <= 0) {
-        this.winBoomTimer = 0.1 + Math.random() * 0.08;
-        const big = Math.random() < 0.4;
-        this.deathFx.trigger(
-          new THREE.Vector3(
-            ex.x + (Math.random() - 0.5) * 26,
-            ex.y + (Math.random() - 0.5) * 16,
-            sz + 14 + Math.random() * 70,
-          ),
-          { laser: 0, rockets: 0 },
-        );
-        this.game.sfx.explosion(big ? 3.2 : 2.2);
+      if (toHyper < 0.85) {
+        // The whole mine lets go: a roaring chain detonation across the
+        // entire bore right before we punch into hyperspace.
+        const fk = 1 - toHyper / 0.85;
+        if (this.winBoomTimer <= 0) {
+          this.winBoomTimer = 0.03;
+          for (let i = 0; i < 3; i++) {
+            this.deathFx.trigger(
+              new THREE.Vector3(
+                ex.x + (Math.random() - 0.5) * 70,
+                ex.y + (Math.random() - 0.5) * 46,
+                sz + 4 + Math.random() * 150,
+              ),
+              { laser: 0, rockets: 0 },
+            );
+          }
+          this.game.sfx.explosion(3.6);
+        }
+        // Hard collapse shake + a fireball whiteout that carries the cut.
+        this.camera.position.x += (Math.random() - 0.5) * fk * 3;
+        this.camera.position.y += (Math.random() - 0.5) * fk * 3;
+        this.winFade.style.background = "#ffe6bf";
+        this.winFade.style.opacity = `${Math.min(1, 0.15 + fk * 1.1)}`;
+      } else {
+        if (this.winBoomTimer <= 0) {
+          this.winBoomTimer = 0.1 + Math.random() * 0.08;
+          const big = Math.random() < 0.4;
+          this.deathFx.trigger(
+            new THREE.Vector3(
+              ex.x + (Math.random() - 0.5) * 26,
+              ex.y + (Math.random() - 0.5) * 16,
+              sz + 14 + Math.random() * 70,
+            ),
+            { laser: 0, rockets: 0 },
+          );
+          this.game.sfx.explosion(big ? 3.2 : 2.2);
+        }
+        this.winFade.style.opacity = "0";
       }
-      // Light bloom into the jump flash as the mouth swallows the screen.
-      this.winFade.style.background = "#dfeaff";
-      this.winFade.style.opacity = `${Math.max(0, (near - 0.78) / 0.22) * 0.55}`;
       return;
     }
 
@@ -1016,9 +1041,10 @@ export class PlayState implements GameState {
 
     // White blink → pure black, then the text.
     if (t < T_JUMP) {
-      // Carry the mouth bloom across the cut, then fade to reveal space.
-      const f = Math.max(0, 0.55 - (t - T_HYPER) * 1.6);
-      this.winFade.style.background = "#dfeaff";
+      // The mine-detonation whiteout holds across the cut, then clears
+      // to reveal the hyperspace starlines.
+      const f = Math.max(0, 1 - (t - T_HYPER) * 2.4);
+      this.winFade.style.background = "#ffe6bf";
       this.winFade.style.opacity = `${f}`;
     } else if (t < T_BLACK) {
       this.winFade.style.background = "#e8f0ff";
@@ -1054,7 +1080,12 @@ export class PlayState implements GameState {
             shieldMax: this.shieldMax,
           };
           this.game.levelIndex += 1;
-          this.game.setState(new BriefingState());
+          // Entering mission 11 = the Earth act gets its own interlude.
+          this.game.setState(
+            this.game.levelIndex === 10
+              ? new ActState()
+              : new BriefingState(),
+          );
         } else if (storyDone) {
           this.game.loadout = null;
           this.game.music.setScene("menu");
